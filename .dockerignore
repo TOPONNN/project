@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.gitignore
+*.md
+.env*
+Dockerfile
+docker-compose*.yml
+nginx
+certbot
+.sisyphus
