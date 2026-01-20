@@ -56,20 +56,22 @@ export default function HeroSection() {
     return () => observer.disconnect();
   }, []);
 
-  // Mouse wheel handler for mode switching
   const handleWheel = useCallback((e: WheelEvent) => {
     if (!isInView) return;
     
+    const heroHeight = containerRef.current?.offsetHeight || window.innerHeight;
+    const mouseYRatio = e.clientY / heroHeight;
+    
+    if (mouseYRatio > 0.7) return;
+    
     const now = Date.now();
-    if (now - lastScrollTime.current < 500) return; // Debounce 500ms
+    if (now - lastScrollTime.current < 500) return;
     
     if (e.deltaY > 0 && activeMode < modes.length - 1) {
-      // Scroll down - next mode
       setActiveMode(prev => prev + 1);
       lastScrollTime.current = now;
       e.preventDefault();
     } else if (e.deltaY < 0 && activeMode > 0) {
-      // Scroll up - previous mode
       setActiveMode(prev => prev - 1);
       lastScrollTime.current = now;
       e.preventDefault();
@@ -222,7 +224,7 @@ export default function HeroSection() {
           transition={{ repeat: Infinity, duration: 2 }}
           className="self-center flex flex-col items-center gap-2 text-white/50"
         >
-          <span className="text-xs tracking-widest uppercase">Scroll to switch mode</span>
+          <span className="text-xs tracking-widest uppercase">Scroll</span>
           <ChevronDown className="h-5 w-5" />
         </motion.div>
       </div>
