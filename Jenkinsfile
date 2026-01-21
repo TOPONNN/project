@@ -7,8 +7,19 @@ pipeline {
                 sh '''
                     sudo git config --global --add safe.directory /home/ubuntu/project
                     cd /home/ubuntu/project
+                    
+                    # .env 파일 백업
+                    if [ -f backend/.env ]; then
+                        cp backend/.env /tmp/backend.env.backup
+                    fi
+                    
                     sudo git fetch origin
                     sudo git reset --hard origin/main
+                    
+                    # .env 파일 복원
+                    if [ -f /tmp/backend.env.backup ]; then
+                        cp /tmp/backend.env.backup backend/.env
+                    fi
                 '''
             }
         }
