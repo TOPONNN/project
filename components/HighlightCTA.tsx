@@ -15,8 +15,8 @@ export default function HighlightCTA() {
           지연 없는 WebRTC 기술로
           <br />마치 같은 공간에 있는 듯한 경험을 제공합니다.
         </p>
-        <Link href="/login">
-          <button className="mt-12 w-fit rounded-full bg-white px-8 py-4 text-black font-bold transition-transform hover:scale-105">
+        <Link href="/login" className="mt-12 w-fit">
+          <button className="rounded-full bg-white px-8 py-4 text-black font-bold transition-transform hover:scale-105">
             지금 참여하기
           </button>
         </Link>
