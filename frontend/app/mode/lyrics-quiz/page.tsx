@@ -4,24 +4,63 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MessageSquareText, ArrowLeft, Brain, Sparkles, Clock } from "lucide-react";
+import { MessageSquareText, ArrowLeft, Brain, Sparkles, Clock, Loader2 } from "lucide-react";
 
 export default function LyricsQuizModePage() {
   const router = useRouter();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     const token = localStorage.getItem("token");
+    const userStr = localStorage.getItem("user");
     setIsLoggedIn(!!token);
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        setUserId(user.id);
+      } catch {}
+    }
   }, []);
 
-  const handleStart = () => {
-    if (isLoggedIn) {
-      alert("방 만들기 기능은 준비 중입니다!");
-    } else {
+  const handleStart = async () => {
+    if (!isLoggedIn) {
       router.push("/login?redirect=/mode/lyrics-quiz");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/rooms", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("token")}`
+        },
+        body: JSON.stringify({
+          name: "가사 맞추기 방",
+          gameMode: "lyrics_quiz",
+          hostId: userId,
+          maxParticipants: 8,
+          isPrivate: false,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        alert(data.message || "방 생성에 실패했습니다.");
+        setLoading(false);
+        return;
+      }
+
+      router.push(`/room/${data.data.code}`);
+    } catch {
+      alert("서버 연결에 실패했습니다.");
+      setLoading(false);
     }
   };
 
@@ -85,11 +124,21 @@ export default function LyricsQuizModePage() {
           {mounted && (
             <motion.button
               onClick={handleStart}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="px-12 py-4 rounded-full bg-[#FF6B6B] text-black font-bold text-lg"
+              disabled={loading}
+              whileHover={{ scale: loading ? 1 : 1.05 }}
+              whileTap={{ scale: loading ? 1 : 0.95 }}
+              className="px-12 py-4 rounded-full bg-[#FF6B6B] text-black font-bold text-lg disabled:opacity-50 flex items-center justify-center gap-2 mx-auto"
             >
-              {isLoggedIn ? "퀴즈 시작하기" : "로그인하고 시작하기"}
+              {loading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  방 생성 중...
+                </>
+              ) : isLoggedIn ? (
+                "퀴즈 시작하기"
+              ) : (
+                "로그인하고 시작하기"
+              )}
             </motion.button>
           )}
         </motion.div>
