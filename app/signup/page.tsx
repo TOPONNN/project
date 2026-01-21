@@ -1,16 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { Music, Eye, EyeOff, Check, Send } from "lucide-react";
+import { Music, Eye, EyeOff, Check, Loader2 } from "lucide-react";
 
 export default function SignupPage() {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [emailVerified, setEmailVerified] = useState(false);
-  const [verificationSent, setVerificationSent] = useState(false);
-  const [verificationCode, setVerificationCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -23,22 +24,42 @@ export default function SignupPage() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSendVerification = () => {
-    if (formData.email) {
-      setVerificationSent(true);
-      console.log("Verification email sent to:", formData.email);
-    }
-  };
-
-  const handleVerifyCode = () => {
-    if (verificationCode === "123456") {
-      setEmailVerified(true);
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Signup:", formData);
+    setError("");
+
+    if (formData.password !== formData.confirmPassword) {
+      setError("비밀번호가 일치하지 않습니다.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          password: formData.password,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        setError(data.message || "회원가입에 실패했습니다.");
+        setLoading(false);
+        return;
+      }
+
+      router.push("/login?registered=true");
+    } catch {
+      setError("서버 연결에 실패했습니다.");
+      setLoading(false);
+    }
   };
 
   const passwordMatch = formData.password === formData.confirmPassword && formData.confirmPassword !== "";
@@ -66,6 +87,12 @@ export default function SignupPage() {
           <p className="text-gray-400 mb-8">KERO와 함께 노래를 시작하세요</p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/50 rounded-xl px-4 py-3 text-red-400 text-sm">
+                {error}
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">이름</label>
               <input
@@ -94,59 +121,16 @@ export default function SignupPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">이메일</label>
-              <div className="flex gap-2">
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  disabled={emailVerified}
-                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-[#C0C0C0] transition-colors disabled:opacity-50"
-                  placeholder="example@email.com"
-                  required
-                />
-                <motion.button
-                  type="button"
-                  onClick={handleSendVerification}
-                  disabled={!formData.email || emailVerified}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="px-4 py-3 rounded-xl bg-[#C0C0C0] text-black font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {emailVerified ? <Check className="w-5 h-5" /> : <Send className="w-5 h-5" />}
-                </motion.button>
-              </div>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-[#C0C0C0] transition-colors"
+                placeholder="example@email.com"
+                required
+              />
             </div>
-
-            {verificationSent && !emailVerified && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                className="space-y-2"
-              >
-                <label className="block text-sm font-medium text-gray-300">인증코드</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={verificationCode}
-                    onChange={(e) => setVerificationCode(e.target.value)}
-                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-[#C0C0C0] transition-colors"
-                    placeholder="인증코드 6자리"
-                    maxLength={6}
-                  />
-                  <motion.button
-                    type="button"
-                    onClick={handleVerifyCode}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="px-6 py-3 rounded-xl bg-[#FFD700] text-black font-medium text-sm"
-                  >
-                    확인
-                  </motion.button>
-                </div>
-                <p className="text-xs text-gray-500">이메일로 전송된 인증코드를 입력하세요</p>
-              </motion.div>
-            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">비밀번호</label>
@@ -208,12 +192,19 @@ export default function SignupPage() {
 
             <motion.button
               type="submit"
-              disabled={!emailVerified}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="w-full bg-gradient-to-r from-[#C0C0C0] to-[#FFD700] text-black font-bold py-3 rounded-xl transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={loading}
+              whileHover={{ scale: loading ? 1 : 1.02 }}
+              whileTap={{ scale: loading ? 1 : 0.98 }}
+              className="w-full bg-gradient-to-r from-[#C0C0C0] to-[#FFD700] text-black font-bold py-3 rounded-xl transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              가입하기
+              {loading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  가입 중...
+                </>
+              ) : (
+                "가입하기"
+              )}
             </motion.button>
           </form>
 
