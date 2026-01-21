@@ -182,19 +182,6 @@ export default function HeroSection() {
           >
             <Link href={currentMode.href}>
               <motion.button 
-                className="rounded-full border px-8 py-3 text-sm font-medium text-white transition-all hover:text-black"
-                style={{ borderColor: `${currentMode.accent}50` }}
-                whileHover={{ 
-                  backgroundColor: currentMode.accent,
-                  scale: 1.05 
-                }}
-                whileTap={{ scale: 0.95 }}
-              >
-                지금 참여하기
-              </motion.button>
-            </Link>
-            <Link href={currentMode.href}>
-              <motion.button 
                 className="rounded-full px-8 py-3 text-sm font-medium text-black transition-all"
                 style={{ backgroundColor: currentMode.accent }}
                 whileHover={{ 
@@ -203,9 +190,21 @@ export default function HeroSection() {
                 }}
                 whileTap={{ scale: 0.95 }}
               >
-                기능 둘러보기
+                지금 참여하기
               </motion.button>
             </Link>
+            <motion.button 
+              onClick={scrollToContent}
+              className="rounded-full border px-8 py-3 text-sm font-medium text-white transition-all hover:text-black"
+              style={{ borderColor: `${currentMode.accent}50` }}
+              whileHover={{ 
+                backgroundColor: currentMode.accent,
+                scale: 1.05 
+              }}
+              whileTap={{ scale: 0.95 }}
+            >
+              기능 둘러보기
+            </motion.button>
           </motion.div>
         </div>
 
