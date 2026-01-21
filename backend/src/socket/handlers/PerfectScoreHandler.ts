@@ -30,6 +30,12 @@ export class PerfectScoreHandler {
         pitchData: data.pitchData,
         currentScore: score,
       });
+
+      this.io.to(data.roomCode).emit("game:pitchUpdate", {
+        participantId: socket.data.participantId,
+        pitch: data.pitchData,
+        score,
+      });
     });
 
     socket.on("perfect:end-song", async (data: { roomCode: string }) => {
@@ -48,7 +54,7 @@ export class PerfectScoreHandler {
       await redis.del(`score:${roomCode}:${p.id}`);
     }
 
-    this.io.to(roomCode).emit("perfect:game-started", {
+    this.io.to(roomCode).emit("game:started", {
       song: {
         id: song.id,
         title: song.title,
@@ -102,10 +108,8 @@ export class PerfectScoreHandler {
 
     results.sort((a, b) => b.totalScore - a.totalScore);
 
-    this.io.to(roomCode).emit("perfect:game-ended", {
-      results,
-      winner: results[0],
-    });
+    this.io.to(roomCode).emit("game:finished");
+    this.io.to(roomCode).emit("game:scoresUpdate", results);
 
     await roomService.updateRoomStatus(roomCode, RoomStatus.WAITING);
   }

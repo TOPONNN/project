@@ -4,6 +4,23 @@ import { NormalModeHandler } from "./handlers/NormalModeHandler";
 import { PerfectScoreHandler } from "./handlers/PerfectScoreHandler";
 import { LyricsQuizHandler } from "./handlers/LyricsQuizHandler";
 import { roomService } from "../services/RoomService";
+import { RoomParticipant } from "../entities";
+import { redisPubSub } from "../services/RedisPubSubService";
+
+interface JoinRoomData {
+  code: string;
+  nickname?: string;
+  userId?: string;
+}
+
+interface LeaveRoomData {
+  code?: string;
+}
+
+interface StartGameData {
+  roomCode?: string;
+  songId: string;
+}
 
 export function initializeSocket(httpServer: HttpServer): Server {
   const io = new Server(httpServer, {
@@ -17,69 +34,126 @@ export function initializeSocket(httpServer: HttpServer): Server {
   const perfectScoreHandler = new PerfectScoreHandler(io);
   const lyricsQuizHandler = new LyricsQuizHandler(io);
 
+  redisPubSub.setSocketServer(io);
+
   io.on("connection", (socket: Socket) => {
     console.log(`Client connected: ${socket.id}`);
 
-    socket.on("join-room", async (data: { roomCode: string; nickname: string; userId?: string }) => {
+    socket.on("room:join", async (data: JoinRoomData) => {
       try {
-        const room = await roomService.getRoomByCode(data.roomCode);
+        const room = await roomService.getRoomByCode(data.code);
         if (!room) {
           socket.emit("error", { message: "방을 찾을 수 없습니다." });
           return;
         }
 
+        const nickname = data.nickname || socket.data.user?.name || `Guest_${socket.id.substring(0, 4)}`;
+        const userId = data.userId || socket.data.user?.id;
+
         const participant = await roomService.joinRoom(
-          data.roomCode,
-          data.nickname,
-          data.userId,
+          data.code,
+          nickname,
+          userId,
           socket.id
         );
 
-        socket.join(data.roomCode);
-        socket.data.roomCode = data.roomCode;
+        socket.join(data.code);
+        socket.data.roomCode = data.code;
         socket.data.participantId = participant.id;
-        socket.data.nickname = data.nickname;
+        socket.data.nickname = nickname;
         socket.data.gameMode = room.gameMode;
 
-        io.to(data.roomCode).emit("participant-joined", {
+        const participantData = {
+          id: participant.id,
+          nickname: participant.nickname,
+          isHost: participant.isHost,
+          score: participant.score,
+        };
+        
+        socket.to(data.code).emit("room:participant:joined", participantData);
+        await redisPubSub.publishParticipantJoined(data.code, participantData);
+
+        socket.emit("room:joined", { 
+          room: {
+            id: room.id,
+            code: room.code,
+            name: room.name,
+            gameMode: room.gameMode,
+            status: room.status,
+            hostId: room.hostId,
+            participants: room.participants.map((p: RoomParticipant) => ({
+              id: p.id,
+              nickname: p.nickname,
+              isHost: p.isHost,
+              score: p.score,
+            })),
+          },
           participant: {
             id: participant.id,
             nickname: participant.nickname,
             isHost: participant.isHost,
-            score: participant.score,
-          },
+          }
         });
-
-        socket.emit("room-joined", { room, participant });
-      } catch (error: any) {
-        socket.emit("error", { message: error.message });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "알 수 없는 오류";
+        socket.emit("error", { message });
       }
     });
 
-    socket.on("leave-room", async () => {
-      const { roomCode, participantId } = socket.data;
+    socket.on("room:leave", async (data?: LeaveRoomData) => {
+      const roomCode = data?.code || socket.data.roomCode;
+      const participantId = socket.data.participantId;
+      
       if (roomCode && participantId) {
         await roomService.leaveRoom(roomCode, participantId);
         socket.leave(roomCode);
-        io.to(roomCode).emit("participant-left", { participantId });
+        io.to(roomCode).emit("room:participant:left", participantId);
+        await redisPubSub.publishParticipantLeft(roomCode, participantId);
       }
     });
 
-    socket.on("start-game", async (data: { roomCode: string; songId: string }) => {
-      const room = await roomService.getRoomByCode(data.roomCode);
+    socket.on("game:start", async (data: StartGameData) => {
+      const roomCode = data.roomCode || socket.data.roomCode;
+      if (!roomCode) return;
+
+      const room = await roomService.getRoomByCode(roomCode);
       if (!room) return;
+
+      const participant = room.participants.find((p: RoomParticipant) => p.id === socket.data.participantId);
+      if (!participant?.isHost) {
+        socket.emit("error", { message: "호스트만 게임을 시작할 수 있습니다." });
+        return;
+      }
 
       switch (room.gameMode) {
         case "normal":
-          await normalModeHandler.startGame(data.roomCode, data.songId);
+          await normalModeHandler.startGame(roomCode, data.songId);
           break;
         case "perfect_score":
-          await perfectScoreHandler.startGame(data.roomCode, data.songId);
+          await perfectScoreHandler.startGame(roomCode, data.songId);
           break;
         case "lyrics_quiz":
-          await lyricsQuizHandler.startGame(data.roomCode, data.songId);
+          await lyricsQuizHandler.startGame(roomCode, data.songId);
           break;
       }
+    });
+
+    socket.on("game:pause", () => {
+      const roomCode = socket.data.roomCode;
+      if (!roomCode) return;
+      io.to(roomCode).emit("game:paused");
+    });
+
+    socket.on("game:resume", () => {
+      const roomCode = socket.data.roomCode;
+      if (!roomCode) return;
+      io.to(roomCode).emit("game:resumed");
+    });
+
+    socket.on("game:end", () => {
+      const roomCode = socket.data.roomCode;
+      if (!roomCode) return;
+      io.to(roomCode).emit("game:finished");
     });
 
     normalModeHandler.registerEvents(socket);
@@ -90,7 +164,8 @@ export function initializeSocket(httpServer: HttpServer): Server {
       const { roomCode, participantId } = socket.data;
       if (roomCode && participantId) {
         await roomService.leaveRoom(roomCode, participantId);
-        io.to(roomCode).emit("participant-left", { participantId });
+        io.to(roomCode).emit("room:participant:left", participantId);
+        await redisPubSub.publishParticipantLeft(roomCode, participantId);
       }
       console.log(`Client disconnected: ${socket.id}`);
     });

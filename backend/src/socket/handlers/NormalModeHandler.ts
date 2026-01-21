@@ -15,28 +15,35 @@ export class NormalModeHandler {
     });
 
     socket.on("normal:play", (data: { roomCode: string; currentTime: number }) => {
-      socket.to(data.roomCode).emit("normal:sync-play", {
+      const roomCode = data.roomCode || socket.data.roomCode;
+      socket.to(roomCode).emit("normal:sync-play", {
         currentTime: data.currentTime,
         participantId: socket.data.participantId,
       });
+      this.io.to(roomCode).emit("game:timeUpdate", data.currentTime);
     });
 
     socket.on("normal:pause", (data: { roomCode: string; currentTime: number }) => {
-      socket.to(data.roomCode).emit("normal:sync-pause", {
+      const roomCode = data.roomCode || socket.data.roomCode;
+      socket.to(roomCode).emit("normal:sync-pause", {
         currentTime: data.currentTime,
         participantId: socket.data.participantId,
       });
     });
 
     socket.on("normal:seek", (data: { roomCode: string; currentTime: number }) => {
-      socket.to(data.roomCode).emit("normal:sync-seek", {
+      const roomCode = data.roomCode || socket.data.roomCode;
+      socket.to(roomCode).emit("normal:sync-seek", {
         currentTime: data.currentTime,
         participantId: socket.data.participantId,
       });
+      this.io.to(roomCode).emit("game:timeUpdate", data.currentTime);
     });
 
     socket.on("normal:end-song", async (data: { roomCode: string }) => {
-      this.io.to(data.roomCode).emit("normal:song-ended");
+      const roomCode = data.roomCode || socket.data.roomCode;
+      this.io.to(roomCode).emit("normal:song-ended");
+      this.io.to(roomCode).emit("game:finished");
     });
   }
 
@@ -46,7 +53,7 @@ export class NormalModeHandler {
 
     await roomService.updateRoomStatus(roomCode, RoomStatus.PLAYING);
 
-    this.io.to(roomCode).emit("normal:game-started", {
+    this.io.to(roomCode).emit("game:started", {
       song: {
         id: song.id,
         title: song.title,

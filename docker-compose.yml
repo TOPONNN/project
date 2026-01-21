@@ -52,6 +52,39 @@ services:
     volumes:
       - redis_data:/data
 
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: unless-stopped
+    networks:
+      - kero-network
+    environment:
+      RABBITMQ_DEFAULT_USER: kero
+      RABBITMQ_DEFAULT_PASS: kero1234!
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  # AI Worker (GPU - runs on separate GPU instance)
+  ai-worker:
+    build:
+      context: ./ai-worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - kero-network
+    env_file:
+      - ./ai-worker/.env
+    depends_on:
+      - redis
+      - rabbitmq
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   # Nginx Reverse Proxy
   nginx:
     image: nginx:alpine
@@ -75,3 +108,4 @@ networks:
 volumes:
   mysql_data:
   redis_data:
+  rabbitmq_data:

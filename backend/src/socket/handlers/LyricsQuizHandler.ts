@@ -75,14 +75,20 @@ export class LyricsQuizHandler {
     };
     this.quizStates.set(roomCode, state);
 
-    this.io.to(roomCode).emit("quiz:game-started", {
+    this.io.to(roomCode).emit("game:started", {
       song: {
         id: song.id,
         title: song.title,
         artist: song.artist,
       },
-      totalQuestions: state.questions.length,
     });
+
+    this.io.to(roomCode).emit("quiz:questions", state.questions.map((q, idx) => ({
+      index: idx,
+      questionText: q.questionText,
+      timeLimit: q.timeLimit,
+      points: q.points,
+    })));
 
     await this.delay(3000);
     await this.nextQuestion(roomCode);
@@ -102,6 +108,7 @@ export class LyricsQuizHandler {
     const question = state.questions[state.currentQuestionIndex];
     const options = this.shuffleArray([question.correctAnswer, ...question.wrongAnswers]);
 
+    this.io.to(roomCode).emit("quiz:nextQuestion");
     this.io.to(roomCode).emit("quiz:question", {
       questionIndex: state.currentQuestionIndex,
       totalQuestions: state.questions.length,
@@ -115,7 +122,7 @@ export class LyricsQuizHandler {
 
     await this.delay(question.timeLimit * 1000 + 2000);
 
-    this.io.to(roomCode).emit("quiz:question-ended", {
+    this.io.to(roomCode).emit("quiz:answerRevealed", {
       questionIndex: state.currentQuestionIndex,
       correctAnswer: question.correctAnswer,
     });
@@ -136,10 +143,8 @@ export class LyricsQuizHandler {
       }))
       .sort((a, b) => b.score - a.score);
 
-    this.io.to(roomCode).emit("quiz:game-ended", {
-      results,
-      winner: results[0],
-    });
+    this.io.to(roomCode).emit("game:finished");
+    this.io.to(roomCode).emit("game:scoresUpdate", results);
 
     this.quizStates.delete(roomCode);
     await roomService.updateRoomStatus(roomCode, RoomStatus.WAITING);
