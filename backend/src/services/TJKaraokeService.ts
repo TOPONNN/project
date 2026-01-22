@@ -21,17 +21,21 @@ type Country = "KOR" | "JPN" | "ENG" | "CHN" | "ALL";
 type ChartPeriod = "daily" | "weekly" | "monthly";
 
 const KOREAN_PATTERN = /[가-힣]/;
-const JAPANESE_PATTERN = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/;
-const CHINESE_PATTERN = /[\u4E00-\u9FFF]/;
+const JAPANESE_KANA_PATTERN = /[\u3040-\u309F\u30A0-\u30FF]/;
+const CJK_PATTERN = /[\u4E00-\u9FFF]/;
 
 export class TJKaraokeService {
   private readonly baseUrl = "https://api.manana.kr/karaoke";
 
   private detectCountry(song: TJSong): Country {
     const text = `${song.title} ${song.artist}`;
+    
     if (KOREAN_PATTERN.test(text)) return "KOR";
-    if (JAPANESE_PATTERN.test(text) && !KOREAN_PATTERN.test(text)) return "JPN";
-    if (CHINESE_PATTERN.test(text) && !KOREAN_PATTERN.test(text) && !JAPANESE_PATTERN.test(text)) return "CHN";
+    
+    if (JAPANESE_KANA_PATTERN.test(text)) return "JPN";
+    
+    if (CJK_PATTERN.test(text)) return "CHN";
+    
     return "ENG";
   }
 
@@ -109,7 +113,7 @@ export class TJKaraokeService {
 
   async getNewReleases(country: Country = "ALL"): Promise<TJSong[]> {
     try {
-      const response = await axios.get(`${this.baseUrl}/release/tj.json`);
+      const response = await axios.get(`${this.baseUrl}/tj.json`);
       const songs = this.parseResponse(response.data);
       const filtered = this.filterByCountry(songs, country);
       return filtered.slice(0, 50);
