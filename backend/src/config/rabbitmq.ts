@@ -6,9 +6,9 @@ dotenv.config();
 let channel: amqp.Channel | null = null;
 
 export const QUEUES = {
-  AUDIO_PROCESSING: "audio_processing",
-  LYRICS_EXTRACTION: "lyrics_extraction",
-  PITCH_ANALYSIS: "pitch_analysis",
+  AUDIO_PROCESSING: "kero.audio.process",
+  LYRICS_EXTRACTION: "kero.lyrics.extract",
+  PITCH_ANALYSIS: "kero.pitch.analyze",
 };
 
 export async function connectRabbitMQ(): Promise<amqp.Channel> {
