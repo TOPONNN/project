@@ -37,6 +37,7 @@
     "express": "^5.2.1",
     "ioredis": "^5.9.2",
     "jsonwebtoken": "^9.0.3",
+    "livekit-server-sdk": "^2.15.0",
     "multer": "^2.0.2",
     "mysql2": "^3.16.1",
     "redis": "^5.10.0",

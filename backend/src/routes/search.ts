@@ -100,7 +100,7 @@ router.get("/combined", async (req: Request, res: Response) => {
 
     const [tjResult, youtubeResult] = await Promise.all([
       tjKaraokeService.searchByTitle(q, 1),
-      youtubeService.searchVideos(`${q} 노래방 MR`, 5),
+      youtubeService.searchVideos(`${q} official audio`, 5),
     ]);
 
     res.json({

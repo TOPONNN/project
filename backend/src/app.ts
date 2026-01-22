@@ -10,6 +10,7 @@ import authRoutes from "./routes/auth";
 import roomRoutes from "./routes/rooms";
 import songRoutes from "./routes/songs";
 import searchRoutes from "./routes/search";
+import livekitRoutes from "./routes/livekit";
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/rooms", roomRoutes);
 app.use("/api/songs", songRoutes);
 app.use("/api/search", searchRoutes);
+app.use("/api/livekit", livekitRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

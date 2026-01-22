@@ -28,6 +28,10 @@ export function initializeSocket(httpServer: HttpServer): Server {
       origin: process.env.CORS_ORIGIN || "*",
       methods: ["GET", "POST"],
     },
+    transports: ["polling", "websocket"],
+    allowUpgrades: true,
+    pingTimeout: 60000,
+    pingInterval: 25000,
   });
 
   const normalModeHandler = new NormalModeHandler(io);
@@ -73,6 +77,9 @@ export function initializeSocket(httpServer: HttpServer): Server {
         socket.to(data.code).emit("room:participant:joined", participantData);
         await redisPubSub.publishParticipantJoined(data.code, participantData);
 
+        const connectedParticipants = (room.participants || [])
+          .filter((p: RoomParticipant) => p.isConnected);
+
         socket.emit("room:joined", { 
           room: {
             id: room.id,
@@ -81,7 +88,7 @@ export function initializeSocket(httpServer: HttpServer): Server {
             gameMode: room.gameMode,
             status: room.status,
             hostId: room.hostId,
-            participants: room.participants.map((p: RoomParticipant) => ({
+            participants: connectedParticipants.map((p: RoomParticipant) => ({
               id: p.id,
               nickname: p.nickname,
               isHost: p.isHost,
@@ -117,7 +124,7 @@ export function initializeSocket(httpServer: HttpServer): Server {
       if (!roomCode) return;
 
       const room = await roomService.getRoomByCode(roomCode);
-      if (!room) return;
+      if (!room || !room.participants) return;
 
       const participant = room.participants.find((p: RoomParticipant) => p.id === socket.data.participantId);
       if (!participant?.isHost) {

@@ -44,4 +44,20 @@ router.get("/:code", async (req: Request, res: Response) => {
   }
 });
 
+router.delete("/:code", async (req: Request, res: Response) => {
+  try {
+    const code = req.params.code as string;
+    const userId = req.body.userId || req.query.userId as string;
+    
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "userId가 필요합니다." });
+    }
+
+    await roomService.deleteRoom(code, userId);
+    res.json({ success: true, message: "방이 삭제되었습니다." });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 export default router;
