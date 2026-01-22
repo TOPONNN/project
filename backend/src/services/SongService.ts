@@ -175,24 +175,18 @@ export class SongService {
 
     const savedSong = await songRepository.save(song);
 
-    const downloadResult = await youtubeService.downloadAudio(videoId, songId);
-
-    await songRepository.update(songId, {
-      originalUrl: downloadResult.s3Url,
-      duration: downloadResult.duration,
-      processingStatus: ProcessingStatus.PROCESSING,
-    });
-
     await publishMessage(QUEUES.AUDIO_PROCESSING, {
       songId: savedSong.id,
-      audioUrl: downloadResult.s3Url,
-      audio_s3_key: `songs/${songId}/original.mp3`,
-      tasks: ["separate", "lyrics", "pitch"],
+      videoId: videoId,
+      title: title,
+      artist: artist,
+      source: "youtube",
+      tasks: ["download", "separate", "lyrics", "pitch"],
       language: "ko",
       callbackUrl: `${process.env.API_URL}/api/songs/${savedSong.id}/processing-callback`,
     });
 
-    return { ...savedSong, originalUrl: downloadResult.s3Url, duration: downloadResult.duration };
+    return savedSong;
   }
 
   async getProcessingStatus(songId: string): Promise<{ status: ProcessingStatus; progress?: string } | null> {

@@ -1,7 +1,7 @@
 import os
 import json
-import redis
-from typing import Dict, Any
+import subprocess
+from typing import Dict, Any, Optional
 from src.config import REDIS_HOST, REDIS_PORT, QUEUE_NAMES, TEMP_DIR
 from src.services.rabbitmq_service import rabbitmq_service
 from src.services.s3_service import s3_service
@@ -9,21 +9,82 @@ from src.processors.demucs_processor import demucs_processor
 from src.processors.whisper_processor import whisper_processor
 from src.processors.crepe_processor import crepe_processor
 
+try:
+    import redis as redis_lib
+except ImportError:
+    redis_lib = None
+
 
 class AIWorker:
     def __init__(self):
-        self.redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+        if redis_lib:
+            self.redis_client = redis_lib.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+        else:
+            self.redis_client = None
+
+    def _download_from_youtube(self, video_id: str, song_id: str) -> Optional[str]:
+        output_path = os.path.join(TEMP_DIR, f"{song_id}_original.mp3")
+        
+        try:
+            cmd = [
+                "yt-dlp",
+                f"https://www.youtube.com/watch?v={video_id}",
+                "-x",
+                "--audio-format", "mp3",
+                "--audio-quality", "0",
+                "-o", output_path,
+                "--no-playlist",
+                "--no-warnings",
+            ]
+            
+            cookies_path = "/app/cookies/youtube.txt"
+            if os.path.exists(cookies_path):
+                cmd.extend(["--cookies", cookies_path])
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            
+            if result.returncode != 0:
+                print(f"yt-dlp error: {result.stderr}")
+                return None
+            
+            if os.path.exists(output_path):
+                s3_key = f"songs/{song_id}/original.mp3"
+                s3_service.upload_file(output_path, s3_key)
+                return output_path
+            
+            return None
+        except Exception as e:
+            print(f"YouTube download error: {e}")
+            return None
 
     def process_audio(self, message: Dict[str, Any]):
-        song_id = message["song_id"]
-        audio_s3_key = message["audio_s3_key"]
+        song_id = message.get("songId") or message.get("song_id")
+        source = message.get("source", "s3")
         tasks = message.get("tasks", ["separate", "lyrics", "pitch"])
 
-        print(f"Processing song {song_id}: {tasks}")
+        print(f"Processing song {song_id}: {tasks}, source: {source}")
 
         self._update_status(song_id, "processing", "Downloading audio...")
 
-        local_audio_path = s3_service.download_file(audio_s3_key)
+        local_audio_path = None
+        
+        if source == "youtube" and "download" in tasks:
+            video_id = message.get("videoId")
+            if video_id:
+                self._update_status(song_id, "processing", "Downloading from YouTube...")
+                local_audio_path = self._download_from_youtube(video_id, song_id)
+                if not local_audio_path:
+                    self._update_status(song_id, "failed", "Failed to download from YouTube")
+                    return
+                tasks = [t for t in tasks if t != "download"]
+        else:
+            audio_s3_key = message.get("audio_s3_key")
+            if audio_s3_key:
+                local_audio_path = s3_service.download_file(audio_s3_key)
+        
+        if not local_audio_path:
+            self._update_status(song_id, "failed", "No audio source provided")
+            return
 
         results = {"song_id": song_id}
 
@@ -88,8 +149,10 @@ class AIWorker:
         if results:
             status_data["results"] = results
 
-        self.redis_client.set(f"song:processing:{song_id}", json.dumps(status_data), ex=3600)
-        self.redis_client.publish("kero:song:status", json.dumps(status_data))
+        if self.redis_client:
+            self.redis_client.set(f"song:processing:{song_id}", json.dumps(status_data), ex=3600)
+            self.redis_client.publish("kero:song:status", json.dumps(status_data))
+        print(f"Status update: {song_id} - {status} - {message}")
 
     def _cleanup_temp_files(self, song_id: str):
         temp_dir = os.path.join(TEMP_DIR, song_id)
