@@ -43,11 +43,11 @@ const DEMO_SONG = {
   audioUrl: "/demo-song.mp3",
   instrumentalUrl: "/demo-instrumental.mp3",
   lyrics: [
-    { time: 0, text: "🎤 KERO 카라오케에 오신 것을 환영합니다" },
-    { time: 5, text: "이제 노래를 시작해볼까요?" },
-    { time: 10, text: "마이크를 켜고 준비하세요" },
-    { time: 15, text: "음악이 시작됩니다..." },
-    { time: 20, text: "♪ ♪ ♪" },
+    { startTime: 0, endTime: 5, text: "🎤 KERO 카라오케에 오신 것을 환영합니다" },
+    { startTime: 5, endTime: 10, text: "이제 노래를 시작해볼까요?" },
+    { startTime: 10, endTime: 15, text: "마이크를 켜고 준비하세요" },
+    { startTime: 15, endTime: 20, text: "음악이 시작됩니다..." },
+    { startTime: 20, endTime: 180, text: "♪ ♪ ♪" },
   ],
 };
 

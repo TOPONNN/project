@@ -4,9 +4,11 @@ export type GameMode = "normal" | "perfect_score" | "lyrics_quiz";
 export type GameStatus = "waiting" | "playing" | "paused" | "finished";
 
 interface LyricsLine {
-  time: number;
+  startTime: number;
+  endTime: number;
   text: string;
   isBlank?: boolean;
+  pitchData?: { time: number; frequency: number; note: string; midi: number }[];
 }
 
 interface QuizQuestion {
@@ -37,6 +39,7 @@ interface GameState {
     vocalUrl?: string;
     instrumentalUrl?: string;
     lyrics: LyricsLine[];
+    pitchData?: { time: number; frequency: number; note: string; midi: number }[];
   } | null;
   currentTime: number;
   currentLyricIndex: number;
@@ -96,9 +99,8 @@ const gameSlice = createSlice({
       state.myScore = action.payload.score;
       state.myCombo = action.payload.combo;
     },
-    updatePitch: (state, action: PayloadAction<{ current: number; target: number }>) => {
-      state.currentPitch = action.payload.current;
-      state.targetPitch = action.payload.target;
+    updatePitch: (state, action: PayloadAction<{ frequency: number; accuracy: number }>) => {
+      state.currentPitch = action.payload.frequency;
     },
     setQuizQuestions: (state, action: PayloadAction<QuizQuestion[]>) => {
       state.quizQuestions = action.payload;

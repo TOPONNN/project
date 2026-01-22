@@ -1,0 +1,198 @@
+import { spawn } from "child_process";
+import { promises as fs } from "fs";
+import path from "path";
+import { v4 as uuidv4 } from "uuid";
+import { uploadFile } from "../config/s3";
+
+interface YouTubeSearchResult {
+  videoId: string;
+  title: string;
+  channel: string;
+  duration: string;
+  thumbnail: string;
+}
+
+interface DownloadResult {
+  localPath: string;
+  s3Url: string;
+  duration: number;
+}
+
+export class YouTubeService {
+  private readonly tempDir = "/tmp/kero-youtube";
+
+  constructor() {
+    fs.mkdir(this.tempDir, { recursive: true }).catch(() => {});
+  }
+
+  async searchVideos(query: string, maxResults: number = 10): Promise<YouTubeSearchResult[]> {
+    return new Promise((resolve, reject) => {
+      const args = [
+        `ytsearch${maxResults}:${query}`,
+        "--dump-json",
+        "--flat-playlist",
+        "--no-warnings",
+      ];
+
+      const process = spawn("yt-dlp", args);
+      let output = "";
+      let error = "";
+
+      process.stdout.on("data", (data) => { output += data.toString(); });
+      process.stderr.on("data", (data) => { error += data.toString(); });
+
+      process.on("close", (code) => {
+        if (code !== 0) {
+          console.error("yt-dlp search error:", error);
+          resolve([]);
+          return;
+        }
+
+        try {
+          const results: YouTubeSearchResult[] = output
+            .trim()
+            .split("\n")
+            .filter(Boolean)
+            .map((line) => {
+              const data = JSON.parse(line);
+              return {
+                videoId: data.id,
+                title: data.title,
+                channel: data.channel || data.uploader || "",
+                duration: this.formatDuration(data.duration),
+                thumbnail: data.thumbnail || `https://i.ytimg.com/vi/${data.id}/hqdefault.jpg`,
+              };
+            });
+          resolve(results);
+        } catch (e) {
+          console.error("Parse error:", e);
+          resolve([]);
+        }
+      });
+    });
+  }
+
+  async downloadAudio(videoId: string, songId: string): Promise<DownloadResult> {
+    const outputPath = path.join(this.tempDir, `${songId}.mp3`);
+
+    await new Promise<void>((resolve, reject) => {
+      const args = [
+        `https://www.youtube.com/watch?v=${videoId}`,
+        "-x",
+        "--audio-format", "mp3",
+        "--audio-quality", "0",
+        "-o", outputPath,
+        "--no-playlist",
+        "--no-warnings",
+      ];
+
+      const process = spawn("yt-dlp", args);
+      let error = "";
+
+      process.stderr.on("data", (data) => { error += data.toString(); });
+
+      process.on("close", (code) => {
+        if (code !== 0) {
+          reject(new Error(`yt-dlp download failed: ${error}`));
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    const stats = await fs.stat(outputPath);
+    const duration = await this.getAudioDuration(outputPath);
+
+    const fileBuffer = await fs.readFile(outputPath);
+    const s3Key = `songs/${songId}/original.mp3`;
+    const s3Url = await uploadFile(s3Key, fileBuffer, "audio/mpeg");
+
+    await fs.unlink(outputPath).catch(() => {});
+
+    return {
+      localPath: outputPath,
+      s3Url,
+      duration,
+    };
+  }
+
+  async getVideoInfo(videoId: string): Promise<{ title: string; artist: string; duration: number } | null> {
+    return new Promise((resolve) => {
+      const args = [
+        `https://www.youtube.com/watch?v=${videoId}`,
+        "--dump-json",
+        "--no-warnings",
+      ];
+
+      const process = spawn("yt-dlp", args);
+      let output = "";
+
+      process.stdout.on("data", (data) => { output += data.toString(); });
+
+      process.on("close", (code) => {
+        if (code !== 0) {
+          resolve(null);
+          return;
+        }
+
+        try {
+          const data = JSON.parse(output);
+          const titleParts = this.parseTitle(data.title);
+          resolve({
+            title: titleParts.title,
+            artist: titleParts.artist || data.channel || data.uploader || "Unknown",
+            duration: data.duration || 0,
+          });
+        } catch {
+          resolve(null);
+        }
+      });
+    });
+  }
+
+  private parseTitle(title: string): { title: string; artist: string } {
+    const patterns = [
+      /^(.+?)\s*[-–—]\s*(.+)$/,
+      /^(.+?)\s*[|｜]\s*(.+)$/,
+      /^【(.+?)】\s*(.+)$/,
+      /^\[(.+?)\]\s*(.+)$/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = title.match(pattern);
+      if (match) {
+        return { artist: match[1].trim(), title: match[2].trim() };
+      }
+    }
+
+    return { title: title.trim(), artist: "" };
+  }
+
+  private async getAudioDuration(filePath: string): Promise<number> {
+    return new Promise((resolve) => {
+      const process = spawn("ffprobe", [
+        "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        filePath,
+      ]);
+
+      let output = "";
+      process.stdout.on("data", (data) => { output += data.toString(); });
+
+      process.on("close", () => {
+        const duration = parseFloat(output.trim());
+        resolve(isNaN(duration) ? 0 : Math.round(duration));
+      });
+    });
+  }
+
+  private formatDuration(seconds: number | null): string {
+    if (!seconds) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  }
+}
+
+export const youtubeService = new YouTubeService();
