@@ -68,6 +68,7 @@ services:
       RABBITMQ_DEFAULT_PASS: kero1234!
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
 
   # Nginx Reverse Proxy
   nginx:

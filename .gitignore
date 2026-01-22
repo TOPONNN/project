@@ -35,3 +35,10 @@ next-env.d.ts
 # OS
 .DS_Store
 Thumbs.db
+
+# Session files
+session.json
+
+# YouTube cookies (contains sensitive login data)
+# Keep youtube.txt as it contains setup instructions
+# backend/cookies/youtube.txt

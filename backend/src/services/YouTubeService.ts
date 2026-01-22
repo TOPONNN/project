@@ -20,14 +20,27 @@ interface DownloadResult {
 
 export class YouTubeService {
   private readonly tempDir = "/tmp/kero-youtube";
+  private readonly cookiesPath = "/app/cookies/youtube.txt";
 
   constructor() {
     fs.mkdir(this.tempDir, { recursive: true }).catch(() => {});
   }
 
+  private async getCookiesArgs(): Promise<string[]> {
+    try {
+      await fs.access(this.cookiesPath);
+      return ["--cookies", this.cookiesPath];
+    } catch {
+      return [];
+    }
+  }
+
   async searchVideos(query: string, maxResults: number = 10): Promise<YouTubeSearchResult[]> {
+    const cookiesArgs = await this.getCookiesArgs();
+    
     return new Promise((resolve, reject) => {
       const args = [
+        ...cookiesArgs,
         `ytsearch${maxResults}:${query}`,
         "--dump-json",
         "--flat-playlist",
@@ -74,9 +87,11 @@ export class YouTubeService {
 
   async downloadAudio(videoId: string, songId: string): Promise<DownloadResult> {
     const outputPath = path.join(this.tempDir, `${songId}.mp3`);
+    const cookiesArgs = await this.getCookiesArgs();
 
     await new Promise<void>((resolve, reject) => {
       const args = [
+        ...cookiesArgs,
         `https://www.youtube.com/watch?v=${videoId}`,
         "-x",
         "--audio-format", "mp3",
@@ -117,8 +132,11 @@ export class YouTubeService {
   }
 
   async getVideoInfo(videoId: string): Promise<{ title: string; artist: string; duration: number } | null> {
+    const cookiesArgs = await this.getCookiesArgs();
+    
     return new Promise((resolve) => {
       const args = [
+        ...cookiesArgs,
         `https://www.youtube.com/watch?v=${videoId}`,
         "--dump-json",
         "--no-warnings",
