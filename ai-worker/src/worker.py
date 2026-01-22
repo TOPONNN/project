@@ -37,9 +37,15 @@ class AIWorker:
                 "--no-warnings",
             ]
             
-            cookies_path = "/app/cookies/youtube.txt"
-            if os.path.exists(cookies_path):
-                cmd.extend(["--cookies", cookies_path])
+            cookies_paths = [
+                os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "cookies", "youtube.txt"),
+                "/app/cookies/youtube.txt",
+                os.path.expanduser("~/ai-worker/cookies/youtube.txt"),
+            ]
+            for cookies_path in cookies_paths:
+                if os.path.exists(cookies_path):
+                    cmd.extend(["--cookies", cookies_path])
+                    break
             
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
             

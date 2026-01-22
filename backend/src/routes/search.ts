@@ -36,10 +36,11 @@ router.get("/tj", async (req: Request, res: Response) => {
 
 router.get("/tj/popular", async (req: Request, res: Response) => {
   try {
-    const { period = "monthly", country = "ALL" } = req.query;
+    const { period = "monthly", country = "ALL", limit = "100" } = req.query;
     const songs = await tjKaraokeService.searchPopular(
       period as "daily" | "weekly" | "monthly",
-      country as "KOR" | "JPN" | "ENG" | "CHN" | "ALL"
+      country as "KOR" | "JPN" | "ENG" | "CHN" | "ALL",
+      parseInt(limit as string)
     );
     res.json({ success: true, data: { songs, total: songs.length } });
   } catch (error: unknown) {
@@ -50,9 +51,10 @@ router.get("/tj/popular", async (req: Request, res: Response) => {
 
 router.get("/tj/new", async (req: Request, res: Response) => {
   try {
-    const { country = "ALL" } = req.query;
+    const { country = "ALL", limit = "100" } = req.query;
     const songs = await tjKaraokeService.getNewReleases(
-      country as "KOR" | "JPN" | "ENG" | "CHN" | "ALL"
+      country as "KOR" | "JPN" | "ENG" | "CHN" | "ALL",
+      parseInt(limit as string)
     );
     res.json({ success: true, data: { songs, total: songs.length } });
   } catch (error: unknown) {

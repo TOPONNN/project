@@ -99,36 +99,47 @@ export class TJKaraokeService {
     }
   }
 
-  async searchPopular(type: ChartPeriod = "monthly", country: Country = "ALL"): Promise<TJSong[]> {
+  async searchPopular(type: ChartPeriod = "monthly", country: Country = "ALL", limit: number = 100): Promise<TJSong[]> {
     try {
       const response = await axios.get(`${this.baseUrl}/popular/tj/${type}.json`);
       const songs = this.parseResponse(response.data);
       const filtered = this.filterByCountry(songs, country);
-      return filtered.slice(0, 50);
+      return filtered.slice(0, limit);
     } catch (error) {
       console.error("TJ popular search error:", error);
       return [];
     }
   }
 
-  async getNewReleases(country: Country = "ALL"): Promise<TJSong[]> {
+  async getNewReleases(country: Country = "ALL", limit: number = 100): Promise<TJSong[]> {
     try {
       const response = await axios.get(`${this.baseUrl}/tj.json`);
       const songs = this.parseResponse(response.data);
       const filtered = this.filterByCountry(songs, country);
-      return filtered.slice(0, 50);
+      return filtered.slice(0, limit);
     } catch (error) {
       console.error("TJ new releases error:", error);
       return [];
     }
   }
 
+  async getInternationalChart(country: Country, limit: number = 100): Promise<TJSong[]> {
+    try {
+      const response = await axios.get(`${this.baseUrl}/tj.json`);
+      const allSongs = this.parseResponse(response.data);
+      const filtered = this.filterByCountry(allSongs, country);
+      return filtered.slice(0, limit);
+    } catch (error) {
+      console.error("TJ international chart error:", error);
+      return [];
+    }
+  }
+
   async getChartByCountry(country: Country, period: ChartPeriod = "monthly"): Promise<TJSong[]> {
-    const songs = await this.searchPopular(period, country);
-    return songs.map(song => ({
-      ...song,
-      country: this.detectCountry(song),
-    }));
+    if (country === "KOR" || country === "ALL") {
+      return this.searchPopular(period, country);
+    }
+    return this.getInternationalChart(country);
   }
 
   private parseResponse(data: unknown): TJSong[] {
