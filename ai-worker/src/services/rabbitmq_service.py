@@ -1,14 +1,35 @@
 import json
+import time
 import pika
 from typing import Callable, Dict, Any
 from src.config import RABBITMQ_HOST, RABBITMQ_PORT, RABBITMQ_USER, RABBITMQ_PASS, QUEUE_NAMES
 
 
 class RabbitMQService:
+    MAX_RETRIES = 10
+    INITIAL_RETRY_DELAY_SECONDS = 2
+
     def __init__(self):
         self.connection = None
         self.channel = None
-        self._connect()
+        self._connect_with_retry()
+
+    def _connect_with_retry(self):
+        retry_delay = self.INITIAL_RETRY_DELAY_SECONDS
+        
+        for attempt in range(1, self.MAX_RETRIES + 1):
+            try:
+                self._connect()
+                print(f"Successfully connected to RabbitMQ on attempt {attempt}")
+                return
+            except pika.exceptions.AMQPConnectionError as e:
+                if attempt == self.MAX_RETRIES:
+                    print(f"Failed to connect to RabbitMQ after {self.MAX_RETRIES} attempts")
+                    raise
+                print(f"RabbitMQ connection attempt {attempt} failed: {e}")
+                print(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, 60)
 
     def _connect(self):
         credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)

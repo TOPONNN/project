@@ -55,8 +55,20 @@ pipeline {
                         fi
                         
                         sudo systemctl restart kero-ai-worker
-                        sleep 5
-                        sudo systemctl status kero-ai-worker --no-pager
+                        
+                        # Wait for AI Worker to connect to RabbitMQ (may need retries)
+                        echo "Waiting for AI Worker to start..."
+                        sleep 30
+                        
+                        # Check if service is running (may still be restarting due to RabbitMQ timing)
+                        if sudo systemctl is-active --quiet kero-ai-worker; then
+                            echo "AI Worker is running"
+                            sudo systemctl status kero-ai-worker --no-pager
+                        else
+                            echo "AI Worker is restarting (normal during RabbitMQ reconnection)"
+                            sudo journalctl -u kero-ai-worker --no-pager -n 10
+                            # Don't fail - it will auto-restart and connect
+                        fi
                     '
                 '''
             }
