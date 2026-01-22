@@ -16,6 +16,7 @@ import { useSocket } from "@/hooks/useSocket";
 import NormalModeGame from "@/components/game/NormalModeGame";
 import PerfectScoreGame from "@/components/game/PerfectScoreGame";
 import LyricsQuizGame from "@/components/game/LyricsQuizGame";
+import KaraokeSongSearch from "@/components/KaraokeSongSearch";
 import dynamic from "next/dynamic";
 
 // VideoRoom은 클라이언트 사이드에서만 로드 (LiveKit은 SSR 지원 안함)
@@ -500,50 +501,12 @@ export default function RoomPage() {
                 className="bg-white/5 border border-white/10 rounded-2xl p-6"
               >
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-bold">🔍 노래 검색</h2>
+                  <h2 className="text-xl font-bold">🎤 노래 선택</h2>
                   <button 
                     onClick={() => setStep("waiting")}
                     className="p-2 rounded-full hover:bg-white/10"
                   >
                     <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                <div className="flex gap-2 mb-4">
-                  <button
-                    onClick={() => setSearchType("tj")}
-                    className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
-                      searchType === "tj" ? "bg-white/20" : "bg-white/5 hover:bg-white/10"
-                    }`}
-                  >
-                    🎤 TJ 노래방
-                  </button>
-                  <button
-                    onClick={() => setSearchType("youtube")}
-                    className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
-                      searchType === "youtube" ? "bg-white/20" : "bg-white/5 hover:bg-white/10"
-                    }`}
-                  >
-                    <Youtube className="w-4 h-4 text-red-500" /> YouTube
-                  </button>
-                </div>
-
-                <div className="flex gap-2 mb-4">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && searchSongs()}
-                    placeholder="노래 제목 또는 가수 검색..."
-                    className="flex-1 px-4 py-3 bg-white/10 border border-white/20 rounded-xl focus:outline-none focus:border-white/40"
-                  />
-                  <button
-                    onClick={searchSongs}
-                    disabled={searching}
-                    className="px-6 py-3 rounded-xl font-bold transition-colors disabled:opacity-50"
-                    style={{ backgroundColor: config.color, color: "black" }}
-                  >
-                    {searching ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
                   </button>
                 </div>
 
@@ -554,47 +517,11 @@ export default function RoomPage() {
                   </div>
                 )}
 
-                <div className="max-h-[400px] overflow-y-auto space-y-2">
-                  {searchType === "tj" && tjResults.map((song, i) => (
-                    <button
-                      key={`tj-${song.number}-${i}`}
-                      onClick={() => selectTJSong(song)}
-                      className="w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-left transition-colors flex items-center gap-4"
-                    >
-                      <div className="w-12 h-12 bg-white/10 rounded-lg flex items-center justify-center text-lg">
-                        🎤
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold truncate">{song.title}</p>
-                        <p className="text-sm text-gray-400 truncate">{song.artist}</p>
-                      </div>
-                      <span className="text-xs text-gray-500 font-mono">{song.number}</span>
-                    </button>
-                  ))}
-
-                  {searchType === "youtube" && youtubeResults.map((video, i) => (
-                    <button
-                      key={`yt-${video.videoId}-${i}`}
-                      onClick={() => selectYouTubeSong(video)}
-                      className="w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl text-left transition-colors flex items-center gap-4"
-                    >
-                      <img 
-                        src={video.thumbnail} 
-                        alt={video.title}
-                        className="w-16 h-12 object-cover rounded-lg"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold truncate">{video.title}</p>
-                        <p className="text-sm text-gray-400 truncate">{video.channel}</p>
-                      </div>
-                      <span className="text-xs text-gray-500">{video.duration}</span>
-                    </button>
-                  ))}
-
-                  {!searching && searchQuery && tjResults.length === 0 && youtubeResults.length === 0 && (
-                    <p className="text-center text-gray-500 py-8">검색 결과가 없습니다</p>
-                  )}
-                </div>
+                <KaraokeSongSearch
+                  onSelect={selectTJSong}
+                  isLoading={searching}
+                  accentColor={config.color}
+                />
               </motion.div>
             )}
 

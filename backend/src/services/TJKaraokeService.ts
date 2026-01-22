@@ -6,6 +6,8 @@ interface TJSong {
   artist: string;
   composer?: string;
   lyricist?: string;
+  release?: string;
+  country?: string;
 }
 
 interface SearchResult {
@@ -15,8 +17,28 @@ interface SearchResult {
   hasMore: boolean;
 }
 
+type Country = "KOR" | "JPN" | "ENG" | "CHN" | "ALL";
+type ChartPeriod = "daily" | "weekly" | "monthly";
+
+const KOREAN_PATTERN = /[가-힣]/;
+const JAPANESE_PATTERN = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/;
+const CHINESE_PATTERN = /[\u4E00-\u9FFF]/;
+
 export class TJKaraokeService {
   private readonly baseUrl = "https://api.manana.kr/karaoke";
+
+  private detectCountry(song: TJSong): Country {
+    const text = `${song.title} ${song.artist}`;
+    if (KOREAN_PATTERN.test(text)) return "KOR";
+    if (JAPANESE_PATTERN.test(text) && !KOREAN_PATTERN.test(text)) return "JPN";
+    if (CHINESE_PATTERN.test(text) && !KOREAN_PATTERN.test(text) && !JAPANESE_PATTERN.test(text)) return "CHN";
+    return "ENG";
+  }
+
+  private filterByCountry(songs: TJSong[], country: Country): TJSong[] {
+    if (country === "ALL") return songs;
+    return songs.filter(song => this.detectCountry(song) === country);
+  }
 
   async searchByTitle(title: string, page: number = 1): Promise<SearchResult> {
     try {
@@ -73,14 +95,36 @@ export class TJKaraokeService {
     }
   }
 
-  async searchPopular(type: "daily" | "weekly" | "monthly" = "monthly"): Promise<TJSong[]> {
+  async searchPopular(type: ChartPeriod = "monthly", country: Country = "ALL"): Promise<TJSong[]> {
     try {
       const response = await axios.get(`${this.baseUrl}/popular/tj/${type}.json`);
-      return this.parseResponse(response.data).slice(0, 50);
+      const songs = this.parseResponse(response.data);
+      const filtered = this.filterByCountry(songs, country);
+      return filtered.slice(0, 50);
     } catch (error) {
       console.error("TJ popular search error:", error);
       return [];
     }
+  }
+
+  async getNewReleases(country: Country = "ALL"): Promise<TJSong[]> {
+    try {
+      const response = await axios.get(`${this.baseUrl}/release/tj.json`);
+      const songs = this.parseResponse(response.data);
+      const filtered = this.filterByCountry(songs, country);
+      return filtered.slice(0, 50);
+    } catch (error) {
+      console.error("TJ new releases error:", error);
+      return [];
+    }
+  }
+
+  async getChartByCountry(country: Country, period: ChartPeriod = "monthly"): Promise<TJSong[]> {
+    const songs = await this.searchPopular(period, country);
+    return songs.map(song => ({
+      ...song,
+      country: this.detectCountry(song),
+    }));
   }
 
   private parseResponse(data: unknown): TJSong[] {

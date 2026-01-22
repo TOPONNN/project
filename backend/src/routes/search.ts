@@ -36,10 +36,42 @@ router.get("/tj", async (req: Request, res: Response) => {
 
 router.get("/tj/popular", async (req: Request, res: Response) => {
   try {
-    const songs = await tjKaraokeService.searchPopular();
+    const { period = "monthly", country = "ALL" } = req.query;
+    const songs = await tjKaraokeService.searchPopular(
+      period as "daily" | "weekly" | "monthly",
+      country as "KOR" | "JPN" | "ENG" | "CHN" | "ALL"
+    );
     res.json({ success: true, data: { songs, total: songs.length } });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "인기곡 조회 중 오류가 발생했습니다.";
+    res.status(500).json({ success: false, message });
+  }
+});
+
+router.get("/tj/new", async (req: Request, res: Response) => {
+  try {
+    const { country = "ALL" } = req.query;
+    const songs = await tjKaraokeService.getNewReleases(
+      country as "KOR" | "JPN" | "ENG" | "CHN" | "ALL"
+    );
+    res.json({ success: true, data: { songs, total: songs.length } });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "신곡 조회 중 오류가 발생했습니다.";
+    res.status(500).json({ success: false, message });
+  }
+});
+
+router.get("/tj/chart/:country", async (req: Request, res: Response) => {
+  try {
+    const country = req.params.country as string;
+    const { period = "monthly" } = req.query;
+    const songs = await tjKaraokeService.getChartByCountry(
+      country.toUpperCase() as "KOR" | "JPN" | "ENG" | "CHN" | "ALL",
+      period as "daily" | "weekly" | "monthly"
+    );
+    res.json({ success: true, data: { songs, total: songs.length, country, period } });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "차트 조회 중 오류가 발생했습니다.";
     res.status(500).json({ success: false, message });
   }
 });
