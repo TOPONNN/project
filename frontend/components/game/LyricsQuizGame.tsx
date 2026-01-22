@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, Trophy, Users, Check, X } from "lucide-react";
+import { Clock, Trophy, Users, Check, X, AlertCircle } from "lucide-react";
 import type { RootState } from "@/store";
-import { selectAnswer } from "@/store/slices/gameSlice";
+import { selectAnswer, nextQuestion, revealAnswer, setGameStatus } from "@/store/slices/gameSlice";
 import { useSocket } from "@/hooks/useSocket";
 
 const COLORS = [
@@ -17,13 +17,14 @@ const COLORS = [
 
 export default function LyricsQuizGame() {
   const dispatch = useDispatch();
-  const { quizQuestions, currentQuestionIndex, selectedAnswer, isAnswerRevealed, roundResults, myScore, scores } = 
+  const { quizQuestions, currentQuestionIndex, selectedAnswer, isAnswerRevealed, roundResults, myScore, scores, currentSong } = 
     useSelector((state: RootState) => state.game);
-  const { code } = useSelector((state: RootState) => state.room);
+  const { code, participants } = useSelector((state: RootState) => state.room);
   const { emitEvent } = useSocket(code);
   
   const [timeLeft, setTimeLeft] = useState(20);
   const [showResults, setShowResults] = useState(false);
+  const [localScore, setLocalScore] = useState(0);
 
   const currentQuestion = quizQuestions[currentQuestionIndex];
 
@@ -35,6 +36,7 @@ export default function LyricsQuizGame() {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
+          handleTimeUp();
           return 0;
         }
         return prev - 1;
@@ -44,50 +46,132 @@ export default function LyricsQuizGame() {
     return () => clearInterval(timer);
   }, [currentQuestion, currentQuestionIndex, isAnswerRevealed]);
 
+  const handleTimeUp = useCallback(() => {
+    if (selectedAnswer === null && !isAnswerRevealed) {
+      dispatch(revealAnswer([{
+        odId: "local",
+        odName: "나",
+        isCorrect: false,
+        points: 0,
+      }]));
+      
+      setTimeout(() => {
+        if (currentQuestionIndex < quizQuestions.length - 1) {
+          dispatch(nextQuestion());
+        } else {
+          dispatch(setGameStatus("finished"));
+        }
+      }, 3000);
+    }
+  }, [selectedAnswer, isAnswerRevealed, currentQuestionIndex, quizQuestions.length, dispatch]);
+
   useEffect(() => {
     if (isAnswerRevealed) {
       setShowResults(true);
       const timeout = setTimeout(() => {
         setShowResults(false);
+        if (currentQuestionIndex < quizQuestions.length - 1) {
+          dispatch(nextQuestion());
+        } else {
+          dispatch(setGameStatus("finished"));
+        }
       }, 3000);
       return () => clearTimeout(timeout);
     }
-  }, [isAnswerRevealed]);
+  }, [isAnswerRevealed, currentQuestionIndex, quizQuestions.length, dispatch]);
 
   const handleSelectAnswer = (index: number) => {
     if (selectedAnswer !== null || isAnswerRevealed) return;
     dispatch(selectAnswer(index));
-    emitEvent("quiz:answer", { questionIndex: currentQuestionIndex, answerIndex: index });
+    
+    const isCorrect = index === currentQuestion.correctIndex;
+    const points = isCorrect ? Math.round(1000 * (timeLeft / (currentQuestion.timeLimit || 20))) : 0;
+    
+    if (isCorrect) {
+      setLocalScore(prev => prev + points);
+    }
+    
+    emitEvent("quiz:answer", { 
+      questionIndex: currentQuestionIndex, 
+      answerIndex: index,
+      timeLeft,
+    });
+    
+    setTimeout(() => {
+      dispatch(revealAnswer([{
+        odId: "local",
+        odName: "나",
+        isCorrect,
+        points,
+      }]));
+    }, 500);
   };
 
   if (!currentQuestion) {
+    const sortedParticipants = [...participants].sort((a, b) => {
+      const scoreA = scores.find(s => s.odId === a.id)?.score || 0;
+      const scoreB = scores.find(s => s.odId === b.id)?.score || 0;
+      return scoreB - scoreA;
+    });
+
     return (
-      <div className="flex flex-col items-center justify-center h-full">
+      <div className="flex flex-col items-center justify-center h-full p-8">
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
-          className="text-center"
+          className="text-center max-w-2xl w-full"
         >
           <Trophy className="w-24 h-24 text-[#FFD700] mx-auto mb-6" />
-          <h2 className="text-4xl font-bold mb-4">게임 종료!</h2>
-          <div className="space-y-4">
-            {scores.slice(0, 5).map((player, i) => (
+          <h2 className="text-4xl font-bold mb-2">게임 종료!</h2>
+          {currentSong && (
+            <p className="text-gray-400 mb-6">{currentSong.title} - {currentSong.artist}</p>
+          )}
+          
+          <div className="bg-white/5 rounded-2xl p-6 mb-6">
+            <p className="text-lg text-gray-400 mb-2">내 점수</p>
+            <p className="text-5xl font-bold text-[#FFD700]">{localScore.toLocaleString()}점</p>
+          </div>
+          
+          <div className="space-y-3">
+            {sortedParticipants.length > 0 ? sortedParticipants.slice(0, 5).map((player, i) => {
+              const playerScore = scores.find(s => s.odId === player.id)?.score || localScore;
+              return (
+                <motion.div
+                  key={player.id}
+                  initial={{ x: -50, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ delay: i * 0.1 }}
+                  className={`flex items-center gap-4 p-4 rounded-xl ${
+                    i === 0 ? "bg-[#FFD700]/20" : "bg-white/10"
+                  }`}
+                >
+                  <span className="text-2xl font-bold w-8">#{i + 1}</span>
+                  <span className="flex-1 text-lg">{player.nickname}</span>
+                  <span className="text-2xl font-bold text-[#FFD700]">{playerScore.toLocaleString()}점</span>
+                </motion.div>
+              );
+            }) : (
               <motion.div
-                key={player.odId}
                 initial={{ x: -50, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
-                transition={{ delay: i * 0.1 }}
-                className={`flex items-center gap-4 p-4 rounded-xl ${
-                  i === 0 ? "bg-[#FFD700]/20" : "bg-white/10"
-                }`}
+                className="flex items-center gap-4 p-4 rounded-xl bg-[#FFD700]/20"
               >
-                <span className="text-2xl font-bold w-8">#{i + 1}</span>
-                <span className="flex-1 text-lg">{player.odName}</span>
-                <span className="text-2xl font-bold text-[#FFD700]">{player.score}점</span>
+                <span className="text-2xl font-bold w-8">#1</span>
+                <span className="flex-1 text-lg">나</span>
+                <span className="text-2xl font-bold text-[#FFD700]">{localScore.toLocaleString()}점</span>
               </motion.div>
-            ))}
+            )}
           </div>
         </motion.div>
+      </div>
+    );
+  }
+
+  if (quizQuestions.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full">
+        <AlertCircle className="w-16 h-16 text-gray-500 mb-4" />
+        <p className="text-gray-400">퀴즈 문제를 불러오는 중...</p>
       </div>
     );
   }
@@ -98,11 +182,11 @@ export default function LyricsQuizGame() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#FF6B6B]/20">
             <Trophy className="w-5 h-5 text-[#FF6B6B]" />
-            <span className="text-xl font-bold text-[#FF6B6B]">{myScore}점</span>
+            <span className="text-xl font-bold text-[#FF6B6B]">{localScore.toLocaleString()}점</span>
           </div>
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/10">
             <Users className="w-4 h-4" />
-            <span className="text-sm">{scores.length}명</span>
+            <span className="text-sm">{participants.length || 1}명</span>
           </div>
         </div>
 
@@ -167,11 +251,11 @@ export default function LyricsQuizGame() {
                       : isWrong
                       ? "bg-red-500/50"
                       : isSelected
-                      ? `${COLORS[index].bg} ring-4 ring-white`
-                      : `${COLORS[index].bg} ${COLORS[index].hover}`
+                      ? `${COLORS[index % 4].bg} ring-4 ring-white`
+                      : `${COLORS[index % 4].bg} ${COLORS[index % 4].hover}`
                   } disabled:cursor-not-allowed`}
                 >
-                  <span className="absolute top-3 left-3 text-2xl">{COLORS[index].icon}</span>
+                  <span className="absolute top-3 left-3 text-2xl">{COLORS[index % 4].icon}</span>
                   {option}
                   {isCorrect && (
                     <motion.div
@@ -199,29 +283,27 @@ export default function LyricsQuizGame() {
       </div>
 
       <AnimatePresence>
-        {showResults && roundResults.length > 0 && (
+        {showResults && (
           <motion.div
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
             className="fixed bottom-0 left-0 right-0 p-6 bg-black/90 backdrop-blur-xl"
           >
-            <div className="max-w-4xl mx-auto">
-              <h3 className="text-xl font-bold mb-4 text-center">라운드 결과</h3>
-              <div className="flex justify-center gap-4 flex-wrap">
-                {roundResults.map((result) => (
-                  <div
-                    key={result.odId}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-full ${
-                      result.isCorrect ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
-                    }`}
-                  >
-                    {result.isCorrect ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
-                    <span>{result.odName}</span>
-                    <span className="font-bold">+{result.points}</span>
-                  </div>
-                ))}
-              </div>
+            <div className="max-w-4xl mx-auto text-center">
+              {selectedAnswer === currentQuestion.correctIndex ? (
+                <div className="text-green-400">
+                  <Check className="w-12 h-12 mx-auto mb-2" />
+                  <h3 className="text-2xl font-bold">정답!</h3>
+                  <p className="text-lg">+{Math.round(1000 * (timeLeft / (currentQuestion.timeLimit || 20)))}점</p>
+                </div>
+              ) : (
+                <div className="text-red-400">
+                  <X className="w-12 h-12 mx-auto mb-2" />
+                  <h3 className="text-2xl font-bold">오답</h3>
+                  <p className="text-lg">정답: {currentQuestion.options[currentQuestion.correctIndex]}</p>
+                </div>
+              )}
             </div>
           </motion.div>
         )}

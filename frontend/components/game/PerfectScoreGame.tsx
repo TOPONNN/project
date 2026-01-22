@@ -3,9 +3,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, Mic, MicOff, Trophy, Zap, Star, Volume2 } from "lucide-react";
+import { Play, Pause, Mic, MicOff, Trophy, Zap, Volume2, AlertCircle } from "lucide-react";
 import type { RootState } from "@/store";
-import { updateCurrentTime, updateScores, updatePitch } from "@/store/slices/gameSlice";
+import { updateCurrentTime, setGameStatus } from "@/store/slices/gameSlice";
 
 interface LyricsLine {
   startTime: number;
@@ -24,11 +24,10 @@ const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 export default function PerfectScoreGame() {
   const dispatch = useDispatch();
-  const { currentSong, status, scores } = useSelector((state: RootState) => state.game);
+  const { currentSong, status } = useSelector((state: RootState) => state.game);
   const { participants } = useSelector((state: RootState) => state.room);
 
   const audioRef = useRef<HTMLAudioElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -46,9 +45,24 @@ export default function PerfectScoreGame() {
   const [accuracy, setAccuracy] = useState(0);
   const [volume, setVolume] = useState(0.7);
   const [scorePopups, setScorePopups] = useState<{ id: number; score: number; type: string }[]>([]);
+  const [audioLoaded, setAudioLoaded] = useState(false);
+  const [pitchData, setPitchData] = useState<PitchPoint[]>([]);
 
   const lyrics: LyricsLine[] = currentSong?.lyrics || [];
-  const pitchData: PitchPoint[] = currentSong?.pitchData || [];
+  const audioUrl = currentSong?.instrumentalUrl || currentSong?.audioUrl;
+
+  useEffect(() => {
+    if (currentSong?.id) {
+      fetch(`/api/songs/${currentSong.id}/pitch`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.data) {
+            setPitchData(data.data);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [currentSong?.id]);
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -66,19 +80,27 @@ export default function PerfectScoreGame() {
       });
       setCurrentLyricIndex(index);
 
-      const currentTarget = pitchData.find(p => Math.abs(p.time - time) < 0.05);
+      const currentTarget = pitchData.find(p => Math.abs(p.time - time) < 0.1);
       if (currentTarget) {
         setTargetPitch(currentTarget.frequency);
       }
     };
 
-    const handleEnded = () => setIsPlaying(false);
+    const handleEnded = () => {
+      setIsPlaying(false);
+      dispatch(setGameStatus("finished"));
+    };
+
+    const handleCanPlay = () => setAudioLoaded(true);
 
     audio.addEventListener("timeupdate", handleTimeUpdate);
     audio.addEventListener("ended", handleEnded);
+    audio.addEventListener("canplay", handleCanPlay);
+    
     return () => {
       audio.removeEventListener("timeupdate", handleTimeUpdate);
       audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("canplay", handleCanPlay);
     };
   }, [lyrics, pitchData, dispatch, volume]);
 
@@ -200,20 +222,18 @@ export default function PerfectScoreGame() {
     } else {
       setCombo(0);
     }
-
-    dispatch(updatePitch({ frequency: userFreq, accuracy: acc }));
-  }, [targetPitch, dispatch]);
+  }, [targetPitch]);
 
   const togglePlay = useCallback(() => {
-    if (!audioRef.current) return;
+    if (!audioRef.current || !audioLoaded) return;
     if (isPlaying) {
       audioRef.current.pause();
     } else {
-      audioRef.current.play();
+      audioRef.current.play().catch(console.error);
       if (!isMicOn) startMicrophone();
     }
     setIsPlaying(!isPlaying);
-  }, [isPlaying, isMicOn, startMicrophone]);
+  }, [isPlaying, isMicOn, startMicrophone, audioLoaded]);
 
   const formatTime = (time: number) => {
     const mins = Math.floor(time / 60);
@@ -241,10 +261,19 @@ export default function PerfectScoreGame() {
     return { grade: "D", color: "text-gray-400" };
   };
 
+  if (!currentSong) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full">
+        <AlertCircle className="w-16 h-16 text-gray-500 mb-4" />
+        <p className="text-gray-400">노래 정보를 불러오는 중...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full bg-gradient-to-b from-purple-900/30 via-black to-black">
-      {currentSong?.instrumentalUrl && (
-        <audio ref={audioRef} src={currentSong.instrumentalUrl} />
+      {audioUrl && (
+        <audio ref={audioRef} src={audioUrl} crossOrigin="anonymous" />
       )}
 
       <div className="flex items-center justify-between p-4 border-b border-white/10 bg-black/30">
@@ -262,21 +291,19 @@ export default function PerfectScoreGame() {
         </div>
 
         <div className="text-center">
-          <h2 className="text-xl font-bold text-white">{currentSong?.title || "노래 제목"}</h2>
-          <p className="text-sm text-gray-400">{currentSong?.artist || "아티스트"}</p>
+          <h2 className="text-xl font-bold text-white">{currentSong.title}</h2>
+          <p className="text-sm text-gray-400">{currentSong.artist}</p>
         </div>
 
         <div className="flex items-center gap-3">
           {participants.slice(0, 4).map((p, i) => {
-            const playerScoreData = scores.find(s => s.odId === p.id);
-            const playerScore = playerScoreData?.score || 0;
-            const { grade, color } = getGrade(playerScore);
+            const { grade, color } = getGrade(currentScore);
             return (
               <div key={p.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl ${i === 0 ? "bg-yellow-500/20 border border-yellow-500/30" : "bg-white/5"}`}>
                 <span className={`text-lg font-bold ${i === 0 ? "text-yellow-400" : "text-gray-500"}`}>#{i + 1}</span>
                 <div>
                   <p className="text-sm font-medium text-white">{p.nickname}</p>
-                  <p className="text-xs text-gray-400">{playerScore.toLocaleString()}</p>
+                  <p className="text-xs text-gray-400">{currentScore.toLocaleString()}</p>
                 </div>
                 <span className={`text-lg font-bold ${color}`}>{grade}</span>
               </div>
@@ -288,7 +315,7 @@ export default function PerfectScoreGame() {
       <div className="flex-1 flex overflow-hidden">
         <div className="w-24 bg-gradient-to-b from-white/5 to-transparent flex flex-col items-center py-4 border-r border-white/10">
           <p className="text-xs text-gray-500 mb-2">음정</p>
-          {NOTES.slice().reverse().map((note, i) => {
+          {NOTES.slice().reverse().map((note) => {
             const isTarget = targetPitch > 0 && frequencyToNote(targetPitch).startsWith(note);
             const isUser = userPitch > 0 && frequencyToNote(userPitch).startsWith(note);
             return (
@@ -306,8 +333,6 @@ export default function PerfectScoreGame() {
         </div>
 
         <div className="flex-1 relative">
-          <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
-
           <div className="absolute left-8 top-0 bottom-0 w-1 bg-gradient-to-b from-yellow-500/50 via-yellow-500 to-yellow-500/50" />
 
           {userPitch > 0 && (
@@ -397,7 +422,7 @@ export default function PerfectScoreGame() {
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <span className="text-sm text-gray-400 w-12 font-mono">{formatTime(currentSong?.duration || 0)}</span>
+            <span className="text-sm text-gray-400 w-12 font-mono">{formatTime(currentSong.duration || 0)}</span>
           </div>
 
           <div className="flex items-center justify-center gap-6">
@@ -431,9 +456,10 @@ export default function PerfectScoreGame() {
 
             <motion.button
               onClick={togglePlay}
+              disabled={!audioLoaded}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.95 }}
-              className="p-5 rounded-full bg-gradient-to-r from-purple-500 via-pink-500 to-yellow-500 text-white shadow-xl"
+              className="p-5 rounded-full bg-gradient-to-r from-purple-500 via-pink-500 to-yellow-500 text-white shadow-xl disabled:opacity-50"
             >
               {isPlaying ? <Pause className="w-7 h-7" /> : <Play className="w-7 h-7 ml-1" />}
             </motion.button>
