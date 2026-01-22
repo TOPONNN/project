@@ -3,6 +3,7 @@ import { Song, LyricsLine, LyricsQuizQuestion, ProcessingStatus } from "../entit
 import { uploadFile } from "../config/s3";
 import { publishMessage, QUEUES } from "../config/rabbitmq";
 import { v4 as uuidv4 } from "uuid";
+import { youtubeService } from "./YouTubeService";
 
 const songRepository = AppDataSource.getRepository(Song);
 const lyricsRepository = AppDataSource.getRepository(LyricsLine);
@@ -157,6 +158,47 @@ export class SongService {
       where: { processingStatus: ProcessingStatus.COMPLETED },
       order: { createdAt: "DESC" },
     });
+  }
+
+  async createFromYouTube(
+    songId: string,
+    videoId: string,
+    title: string,
+    artist: string
+  ): Promise<Song> {
+    const song = songRepository.create({
+      id: songId,
+      title,
+      artist,
+      processingStatus: ProcessingStatus.PENDING,
+    });
+
+    const savedSong = await songRepository.save(song);
+
+    const downloadResult = await youtubeService.downloadAudio(videoId, songId);
+
+    await songRepository.update(songId, {
+      originalUrl: downloadResult.s3Url,
+      duration: downloadResult.duration,
+      processingStatus: ProcessingStatus.PROCESSING,
+    });
+
+    await publishMessage(QUEUES.AUDIO_PROCESSING, {
+      songId: savedSong.id,
+      audioUrl: downloadResult.s3Url,
+      audio_s3_key: `songs/${songId}/original.mp3`,
+      tasks: ["separate", "lyrics", "pitch"],
+      language: "ko",
+      callbackUrl: `${process.env.API_URL}/api/songs/${savedSong.id}/processing-callback`,
+    });
+
+    return { ...savedSong, originalUrl: downloadResult.s3Url, duration: downloadResult.duration };
+  }
+
+  async getProcessingStatus(songId: string): Promise<{ status: ProcessingStatus; progress?: string } | null> {
+    const song = await songRepository.findOne({ where: { id: songId } });
+    if (!song) return null;
+    return { status: song.processingStatus };
   }
 }
 

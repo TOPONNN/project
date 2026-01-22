@@ -9,6 +9,7 @@ import { initializeSocket } from "./socket";
 import authRoutes from "./routes/auth";
 import roomRoutes from "./routes/rooms";
 import songRoutes from "./routes/songs";
+import searchRoutes from "./routes/search";
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/auth", authRoutes);
 app.use("/api/rooms", roomRoutes);
 app.use("/api/songs", songRoutes);
+app.use("/api/search", searchRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
