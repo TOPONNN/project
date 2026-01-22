@@ -1,11 +1,41 @@
 import { Router, Request, Response } from "express";
 import multer from "multer";
 import { songService } from "../services/SongService";
+import { youtubeService } from "../services/YouTubeService";
 import { ProcessingStatus } from "../entities";
 import { redis } from "../config/redis";
+import { v4 as uuidv4 } from "uuid";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
+
+router.get("/search/youtube", async (req: Request, res: Response) => {
+  try {
+    const query = req.query.query as string;
+    if (!query) {
+      return res.status(400).json({ success: false, message: "검색어가 필요합니다." });
+    }
+
+    const results = await youtubeService.searchVideos(query, 10);
+    res.json({ success: true, data: results });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.get("/search/tj", async (req: Request, res: Response) => {
+  try {
+    const query = req.query.query as string;
+    if (!query) {
+      return res.status(400).json({ success: false, message: "검색어가 필요합니다." });
+    }
+
+    const results = await youtubeService.searchVideos(`${query} 노래방`, 10);
+    res.json({ success: true, data: results });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 router.post("/upload", upload.single("audio"), async (req: Request, res: Response) => {
   try {
@@ -22,6 +52,21 @@ router.post("/upload", upload.single("audio"), async (req: Request, res: Respons
       uploadedBy
     );
 
+    res.status(201).json({ success: true, data: song });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post("/youtube", async (req: Request, res: Response) => {
+  try {
+    const { videoId, title, artist } = req.body;
+    if (!videoId) {
+      return res.status(400).json({ success: false, message: "videoId가 필요합니다." });
+    }
+
+    const songId = uuidv4();
+    const song = await songService.createFromYouTube(songId, videoId, title, artist);
     res.status(201).json({ success: true, data: song });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
