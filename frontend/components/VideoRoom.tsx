@@ -23,7 +23,7 @@ export default function VideoRoom({ roomCode, participantName, participantId }: 
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(true);
 
-  const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || "wss://plyst.info";
+  const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || "wss://plyst.info/rtc";
 
   useEffect(() => {
     const getToken = async () => {
@@ -113,11 +113,19 @@ export default function VideoRoom({ roomCode, participantName, participantId }: 
 function VideoTiles() {
   const tracks = useTracks(
     [
-      { source: Track.Source.Camera, withPlaceholder: true },
+      { source: Track.Source.Camera, withPlaceholder: false },
       { source: Track.Source.ScreenShare, withPlaceholder: false },
     ],
     { onlySubscribed: false }
   );
+
+  if (tracks.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-white/60 text-sm">
+        카메라 연결 대기 중...
+      </div>
+    );
+  }
 
   return (
     <GridLayout tracks={tracks} style={{ height: "100%" }}>

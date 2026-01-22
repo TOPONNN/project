@@ -1,8 +1,9 @@
 import os
 import json
 import subprocess
+import requests
 from typing import Dict, Any, Optional
-from src.config import REDIS_HOST, REDIS_PORT, QUEUE_NAMES, TEMP_DIR
+from src.config import REDIS_HOST, REDIS_PORT, QUEUE_NAMES, TEMP_DIR, BACKEND_API_URL
 from src.services.rabbitmq_service import rabbitmq_service
 from src.services.s3_service import s3_service
 from src.processors.demucs_processor import demucs_processor
@@ -138,6 +139,7 @@ class AIWorker:
                 results["pitch"] = pitch_result
 
             self._update_status(song_id, "completed", "Processing complete", results)
+            self._send_callback_to_backend(song_id, results)
             print(f"Song {song_id} processing complete")
 
         except Exception as e:
@@ -161,6 +163,29 @@ class AIWorker:
             self.redis_client.set(f"song:processing:{song_id}", json.dumps(status_data), ex=3600)
             self.redis_client.publish("kero:song:status", json.dumps(status_data))
         print(f"Status update: {song_id} - {status} - {message}")
+
+    def _send_callback_to_backend(self, song_id: str, results: Dict):
+        try:
+            separation = results.get("separation", {})
+            lyrics_result = results.get("lyrics", {})
+            
+            callback_data = {
+                "status": "completed",
+                "vocalsUrl": separation.get("vocals_url"),
+                "instrumentalUrl": separation.get("instrumental_url"),
+                "lyrics": lyrics_result.get("lyrics", []),
+                "duration": lyrics_result.get("duration"),
+            }
+            
+            url = f"{BACKEND_API_URL}/api/songs/{song_id}/processing-callback"
+            response = requests.post(url, json=callback_data, timeout=30)
+            
+            if response.status_code == 200:
+                print(f"Callback sent successfully for song {song_id}")
+            else:
+                print(f"Callback failed for song {song_id}: {response.status_code} - {response.text}")
+        except Exception as e:
+            print(f"Error sending callback for song {song_id}: {e}")
 
     def _cleanup_temp_files(self, song_id: str):
         temp_dir = os.path.join(TEMP_DIR, song_id)
