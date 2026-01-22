@@ -53,6 +53,17 @@ export class RoomService {
       throw new Error("이미 종료된 방입니다.");
     }
 
+    if (userId) {
+      const existingParticipant = room.participants.find(
+        (p) => p.userId === userId
+      );
+      if (existingParticipant) {
+        existingParticipant.isConnected = true;
+        existingParticipant.socketId = socketId;
+        return participantRepository.save(existingParticipant);
+      }
+    }
+
     const activeParticipants = room.participants.filter((p) => p.isConnected);
     if (activeParticipants.length >= room.maxParticipants) {
       throw new Error("방이 가득 찼습니다.");
@@ -102,7 +113,7 @@ export class RoomService {
   async getPublicRooms(gameMode?: GameMode): Promise<Room[]> {
     const query = roomRepository
       .createQueryBuilder("room")
-      .leftJoinAndSelect("room.participants", "participants")
+      .leftJoinAndSelect("room.participants", "participants", "participants.isConnected = :isConnected", { isConnected: true })
       .where("room.isPrivate = :isPrivate", { isPrivate: false })
       .andWhere("room.status = :status", { status: RoomStatus.WAITING });
 
@@ -119,6 +130,27 @@ export class RoomService {
 
   async updateParticipantScore(participantId: number, score: number): Promise<void> {
     await participantRepository.increment({ id: participantId }, "score", score);
+  }
+
+  async deleteRoom(code: string, userId: string): Promise<boolean> {
+    const room = await roomRepository.findOne({
+      where: { code },
+      relations: ["participants"],
+    });
+
+    if (!room) {
+      throw new Error("방을 찾을 수 없습니다.");
+    }
+
+    if (room.hostId !== userId) {
+      throw new Error("방장만 방을 삭제할 수 있습니다.");
+    }
+
+    await participantRepository.delete({ roomId: room.id });
+    await roomRepository.delete({ id: room.id });
+    await redis.del(`room:${code}`);
+
+    return true;
   }
 }
 

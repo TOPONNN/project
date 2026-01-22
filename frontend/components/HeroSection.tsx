@@ -13,7 +13,7 @@ const modes = [
     description: ["점수나 제한 없이 자유롭게 노래를 즐기세요.", "편안한 분위기에서 마음껏 부르세요."],
     icon: Music,
     accent: "#C0C0C0",
-    href: "/mode/normal",
+    href: "/lobby?mode=normal",
   },
   {
     id: "02", 
@@ -22,7 +22,7 @@ const modes = [
     description: ["AI 음정 분석으로 실시간 점수를 확인하세요.", "100점에 도전해보세요!"],
     icon: Target,
     accent: "#FFD700",
-    href: "/mode/perfect-score",
+    href: "/lobby?mode=perfect_score",
   },
   {
     id: "03",
@@ -31,7 +31,7 @@ const modes = [
     description: ["빈칸으로 가려진 가사를 맞춰보세요.", "얼마나 많은 노래 가사를 알고 있나요?"],
     icon: MessageSquareText,
     accent: "#FF6B6B",
-    href: "/mode/lyrics-quiz",
+    href: "/lobby?mode=lyrics_quiz",
   },
 ];
 

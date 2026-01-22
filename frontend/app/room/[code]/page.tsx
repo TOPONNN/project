@@ -16,6 +16,17 @@ import { useSocket } from "@/hooks/useSocket";
 import NormalModeGame from "@/components/game/NormalModeGame";
 import PerfectScoreGame from "@/components/game/PerfectScoreGame";
 import LyricsQuizGame from "@/components/game/LyricsQuizGame";
+import dynamic from "next/dynamic";
+
+// VideoRoom은 클라이언트 사이드에서만 로드 (LiveKit은 SSR 지원 안함)
+const VideoRoom = dynamic(() => import("@/components/VideoRoom"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full bg-black/50 rounded-xl flex items-center justify-center">
+      <span className="text-white/60 text-sm">카메라 로딩 중...</span>
+    </div>
+  ),
+});
 
 const modeConfig = {
   normal: {
@@ -78,6 +89,9 @@ export default function RoomPage() {
   const { status: gameStatus, currentSong } = useSelector((state: RootState) => state.game);
   const { participants } = useSelector((state: RootState) => state.room);
   const { emitEvent } = useSocket(code);
+  
+  const [userName, setUserName] = useState<string>("Guest");
+  const [visitorId, setVisitorId] = useState<string>("");
 
   const [room, setRoomData] = useState<{
     id: string;
@@ -149,6 +163,15 @@ export default function RoomPage() {
     fetchRoom();
   }, [code, dispatch]);
 
+  useEffect(() => {
+    const user = localStorage.getItem("user");
+    if (user) {
+      const userData = JSON.parse(user);
+      setUserName(userData.name || "Guest");
+      setVisitorId(userData.id || "");
+    }
+  }, []);
+
   const searchSongs = useCallback(async () => {
     if (!searchQuery.trim()) return;
     
@@ -161,7 +184,7 @@ export default function RoomPage() {
           setTjResults(data.data.songs || []);
         }
       } else {
-        const res = await fetch(`/api/search/youtube?q=${encodeURIComponent(searchQuery + " 노래방 MR")}`);
+        const res = await fetch(`/api/search/youtube?q=${encodeURIComponent(searchQuery + " official audio")}`);
         const data = await res.json();
         if (data.success) {
           setYoutubeResults(data.data || []);
@@ -185,7 +208,7 @@ export default function RoomPage() {
     
     setSearching(true);
     try {
-      const res = await fetch(`/api/search/youtube?q=${encodeURIComponent(`${song.title} ${song.artist} 노래방 MR`)}`);
+      const res = await fetch(`/api/search/youtube?q=${encodeURIComponent(`${song.title} ${song.artist} official audio`)}`);
       const data = await res.json();
       if (data.success && data.data.length > 0) {
         const video = data.data[0];
@@ -371,8 +394,22 @@ export default function RoomPage() {
           </div>
         </header>
 
-        <main className="flex-1">
-          <GameComponent />
+        <main className="flex-1 flex">
+          <div className="flex-1">
+            <GameComponent />
+          </div>
+          <div className="w-80 h-full border-l border-white/10 bg-black/30">
+            <div className="p-3 border-b border-white/10">
+              <h3 className="text-sm font-medium text-white/80">참가자 화면</h3>
+            </div>
+            <div className="h-[calc(100%-48px)]">
+              <VideoRoom
+                roomCode={code}
+                participantName={userName}
+                participantId={visitorId}
+              />
+            </div>
+          </div>
         </main>
       </div>
     );

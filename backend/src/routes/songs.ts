@@ -30,7 +30,7 @@ router.get("/search/tj", async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: "검색어가 필요합니다." });
     }
 
-    const results = await youtubeService.searchVideos(`${query} 노래방`, 10);
+    const results = await youtubeService.searchVideos(`${query} official audio`, 10);
     res.json({ success: true, data: results });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });

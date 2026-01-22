@@ -86,6 +86,20 @@ services:
     networks:
       - kero-network
 
+  # LiveKit Server for WebRTC
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+    networks:
+      - kero-network
+
 networks:
   kero-network:
     driver: bridge
