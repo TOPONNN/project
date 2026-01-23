@@ -27,9 +27,20 @@ interface PlayerScore {
   accuracy: number;
 }
 
+interface QueuedSong {
+  id: string;
+  title: string;
+  artist: string;
+  addedBy: string;
+  status: "waiting" | "processing" | "ready";
+  videoId?: string;
+  tjNumber?: string;
+}
+
 interface GameState {
   mode: GameMode | null;
   status: GameStatus;
+  songQueue: QueuedSong[];
   currentSong: {
     id: string;
     title: string;
@@ -58,6 +69,7 @@ interface GameState {
 const initialState: GameState = {
   mode: null,
   status: "waiting",
+  songQueue: [],
   currentSong: null,
   currentTime: 0,
   currentLyricIndex: 0,
@@ -85,6 +97,26 @@ const gameSlice = createSlice({
     },
     setCurrentSong: (state, action: PayloadAction<GameState["currentSong"]>) => {
       state.currentSong = action.payload;
+    },
+    addToQueue: (state, action: PayloadAction<QueuedSong>) => {
+      state.songQueue.push(action.payload);
+    },
+    removeFromQueue: (state, action: PayloadAction<string>) => {
+      state.songQueue = state.songQueue.filter(song => song.id !== action.payload);
+    },
+    updateQueueItem: (state, action: PayloadAction<{ id: string; updates: Partial<QueuedSong> }>) => {
+      const song = state.songQueue.find(s => s.id === action.payload.id);
+      if (song) {
+        Object.assign(song, action.payload.updates);
+      }
+    },
+    playNextInQueue: (state) => {
+      if (state.songQueue.length > 0) {
+        state.songQueue.shift();
+      }
+    },
+    setQueue: (state, action: PayloadAction<QueuedSong[]>) => {
+      state.songQueue = action.payload;
     },
     updateCurrentTime: (state, action: PayloadAction<number>) => {
       state.currentTime = action.payload;
@@ -126,6 +158,11 @@ export const {
   setGameMode,
   setGameStatus,
   setCurrentSong,
+  addToQueue,
+  removeFromQueue,
+  updateQueueItem,
+  playNextInQueue,
+  setQueue,
   updateCurrentTime,
   setCurrentLyricIndex,
   updateScores,
