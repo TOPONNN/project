@@ -16,8 +16,8 @@ AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_REGION = os.getenv("AWS_REGION", "ap-northeast-2")
 S3_BUCKET = os.getenv("S3_BUCKET", "kero-audio")
 
-# Backend API URL for callbacks
-BACKEND_API_URL = os.getenv("BACKEND_API_URL", "http://***REDACTED_SERVER_IP***:4000")
+# Backend API URL for callbacks (use public nginx endpoint)
+BACKEND_API_URL = os.getenv("BACKEND_API_URL", "https://plyst.info")
 
 TEMP_DIR = os.getenv("TEMP_DIR", "/tmp/kero-ai")
 os.makedirs(TEMP_DIR, exist_ok=True)

@@ -83,11 +83,11 @@ export class RoomService {
     return participantRepository.save(participant);
   }
 
-  async leaveRoom(roomId: string, participantId: number): Promise<void> {
+  async leaveRoom(roomCode: string, participantId: number): Promise<void> {
     await participantRepository.update(participantId, { isConnected: false });
 
     const room = await roomRepository.findOne({
-      where: { id: roomId },
+      where: { code: roomCode },
       relations: ["participants"],
     });
 

@@ -28,7 +28,20 @@ export function useSocket(roomCode: string | null) {
 
     socket.on("connect", () => {
       dispatch(setConnected(true));
-      socket.emit("room:join", { code: roomCode });
+      
+      const userStr = localStorage.getItem("user");
+      let userId: string | undefined;
+      let nickname: string | undefined;
+      
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          userId = user.id;
+          nickname = user.name;
+        } catch {}
+      }
+      
+      socket.emit("room:join", { code: roomCode, userId, nickname });
     });
 
     socket.on("disconnect", () => {

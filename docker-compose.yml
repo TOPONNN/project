@@ -11,6 +11,11 @@ services:
       - "3000"
     environment:
       - NODE_ENV=production
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://172.18.0.1:12201"
+        tag: "frontend"
 
   # Backend (Express.js)
   backend:
@@ -31,6 +36,11 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_healthy
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://172.18.0.1:12201"
+        tag: "backend"
 
   # MySQL Database
   mysql:
@@ -46,6 +56,11 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
     command: --default-authentication-plugin=mysql_native_password
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://172.18.0.1:12201"
+        tag: "mysql"
 
   # Redis
   redis:
@@ -57,6 +72,11 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://172.18.0.1:12201"
+        tag: "redis"
 
   # RabbitMQ
   rabbitmq:
@@ -79,6 +99,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://172.18.0.1:12201"
+        tag: "rabbitmq"
 
   # Nginx Reverse Proxy
   nginx:
@@ -95,6 +120,11 @@ services:
       - backend
     networks:
       - kero-network
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://172.18.0.1:12201"
+        tag: "nginx"
 
   # LiveKit Server for WebRTC
   livekit:
@@ -109,6 +139,62 @@ services:
       - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
     networks:
       - kero-network
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://172.18.0.1:12201"
+        tag: "livekit"
+
+  # Elasticsearch
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+      - ./elk/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+    networks:
+      - kero-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 | grep -q 'cluster_name'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Logstash
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    restart: unless-stopped
+    volumes:
+      - ./elk/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
+    ports:
+      - "5044:5044"
+      - "5000:5000/tcp"
+      - "5000:5000/udp"
+      - "12201:12201/udp"
+    environment:
+      LS_JAVA_OPTS: "-Xmx256m -Xms256m"
+    networks:
+      - kero-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  # Kibana
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    restart: unless-stopped
+    volumes:
+      - ./elk/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+    networks:
+      - kero-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
 
 networks:
   kero-network:
@@ -118,3 +204,4 @@ volumes:
   mysql_data:
   redis_data:
   rabbitmq_data:
+  elasticsearch_data:
