@@ -44,6 +44,7 @@ function LobbyContent() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [roomName, setRoomName] = useState("");
+  const [nickname, setNickname] = useState("");
   const [selectedMode, setSelectedMode] = useState<"normal" | "perfect_score" | "lyrics_quiz">(mode || "normal");
   const [isPrivate, setIsPrivate] = useState(false);
   const [joinCode, setJoinCode] = useState("");
@@ -57,6 +58,7 @@ function LobbyContent() {
       try {
         const user = JSON.parse(userStr);
         setUserId(user.id);
+        setNickname(user.name || "");
       } catch {}
     }
   }, []);
@@ -92,6 +94,20 @@ function LobbyContent() {
       return;
     }
 
+    if (!nickname.trim()) {
+      alert("닉네임을 입력해주세요.");
+      return;
+    }
+
+    const userStr = localStorage.getItem("user");
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        user.name = nickname.trim();
+        localStorage.setItem("user", JSON.stringify(user));
+      } catch {}
+    }
+
     setCreating(true);
     try {
       const res = await fetch("/api/rooms", {
@@ -102,7 +118,7 @@ function LobbyContent() {
         },
         body: JSON.stringify({
           name: roomName,
-          gameMode: selectedMode,
+          gameMode: mode || "normal",
           hostId: userId,
           maxParticipants: 8,
           isPrivate,
@@ -352,6 +368,17 @@ function LobbyContent() {
               
               <div className="space-y-4">
                 <div>
+                  <label className="block text-sm text-gray-400 mb-2">닉네임</label>
+                  <input
+                    type="text"
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    placeholder="닉네임을 입력하세요"
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl focus:outline-none focus:border-white/40"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-sm text-gray-400 mb-2">방 이름</label>
                   <input
                     type="text"
@@ -360,26 +387,6 @@ function LobbyContent() {
                     placeholder="방 이름을 입력하세요"
                     className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl focus:outline-none focus:border-white/40"
                   />
-                </div>
-                
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">게임 모드</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {Object.entries(modeConfig).map(([key, cfg]) => (
-                      <button
-                        key={key}
-                        onClick={() => setSelectedMode(key as any)}
-                        className={`p-3 rounded-xl border transition-colors flex flex-col items-center gap-2 ${
-                          selectedMode === key 
-                            ? "border-white/40 bg-white/10" 
-                            : "border-white/10 hover:border-white/20"
-                        }`}
-                      >
-                        <cfg.icon className="w-5 h-5" style={{ color: cfg.color }} />
-                        <span className="text-xs">{cfg.title}</span>
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 <div className="flex items-center gap-3">

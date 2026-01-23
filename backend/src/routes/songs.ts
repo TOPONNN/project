@@ -108,6 +108,35 @@ router.get("/:id", async (req: Request, res: Response) => {
     if (!song) {
       return res.status(404).json({ success: false, message: "곡을 찾을 수 없습니다." });
     }
+
+    const needsRedisFallback = !song.lyrics || song.lyrics.length === 0 || !song.instrumentalUrl;
+    if (needsRedisFallback) {
+      const redisData = await redis.get(`song:processing:${id}`);
+      if (redisData) {
+        const parsed = JSON.parse(redisData);
+        if (parsed.status === "completed" && parsed.results) {
+          const results = parsed.results;
+          if (results.separation) {
+            song.vocalsUrl = song.vocalsUrl || results.separation.vocals_url;
+            song.instrumentalUrl = song.instrumentalUrl || results.separation.instrumental_url;
+          }
+          if (results.lyrics?.lyrics && (!song.lyrics || song.lyrics.length === 0)) {
+            song.lyrics = results.lyrics.lyrics.map((l: any, idx: number) => ({
+              id: `redis-${idx}`,
+              songId: id,
+              startTime: l.start_time,
+              endTime: l.end_time,
+              text: l.text,
+              lineOrder: idx,
+            }));
+          }
+          if (results.lyrics?.duration) {
+            song.duration = song.duration || results.lyrics.duration;
+          }
+        }
+      }
+    }
+
     res.json({ success: true, data: song });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });

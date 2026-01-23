@@ -10,7 +10,7 @@ import {
   Loader2, Play, Search, Youtube, X, Disc3, AlertCircle
 } from "lucide-react";
 import type { RootState } from "@/store";
-import { setRoom, addParticipant } from "@/store/slices/roomSlice";
+import { setRoom } from "@/store/slices/roomSlice";
 import { setGameMode, setGameStatus, setCurrentSong, setQuizQuestions } from "@/store/slices/gameSlice";
 import { useSocket } from "@/hooks/useSocket";
 import NormalModeGame from "@/components/game/NormalModeGame";
@@ -142,17 +142,6 @@ export default function RoomPage() {
           hostId: data.data.hostId,
         }));
         dispatch(setGameMode(data.data.gameMode));
-
-        const user = localStorage.getItem("user");
-        if (user) {
-          const userData = JSON.parse(user);
-          dispatch(addParticipant({
-            id: userData.id,
-            nickname: userData.name,
-            isHost: data.data.hostId === userData.id,
-            isReady: true,
-          }));
-        }
 
         setLoading(false);
       } catch {

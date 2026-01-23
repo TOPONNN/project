@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   LiveKitRoom,
-  GridLayout,
-  ParticipantTile,
+  VideoTrack,
   useTracks,
   RoomAudioRenderer,
-  ControlBar,
+  useLocalParticipant,
+  TrackReference,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { Loader2, VideoOff } from "lucide-react";
+import { Loader2, VideoOff, Mic, MicOff, Video, Camera, CameraOff } from "lucide-react";
 
 interface VideoRoomProps {
   roomCode: string;
@@ -23,7 +23,7 @@ export default function VideoRoom({ roomCode, participantName, participantId }: 
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(true);
 
-  const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || "wss://plyst.info/rtc";
+  const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || "wss://plyst.info";
 
   useEffect(() => {
     const getToken = async () => {
@@ -97,20 +97,24 @@ export default function VideoRoom({ roomCode, participantName, participantId }: 
       audio={true}
       style={{ height: "100%", background: "#000" }}
     >
-      <div className="flex flex-col h-full">
-        <div className="flex-1 p-2">
-          <VideoTiles />
-        </div>
-        <div className="p-2 border-t border-white/10">
-          <ControlBar variation="minimal" />
-        </div>
-      </div>
+      <RoomContent />
       <RoomAudioRenderer />
     </LiveKitRoom>
   );
 }
 
-function VideoTiles() {
+function RoomContent() {
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-hidden">
+        <VideoGrid />
+      </div>
+      <CustomControlBar />
+    </div>
+  );
+}
+
+function VideoGrid() {
   const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: false },
@@ -119,17 +123,91 @@ function VideoTiles() {
     { onlySubscribed: false }
   );
 
-  if (tracks.length === 0) {
+  const cameraTracks = tracks.filter(
+    (track): track is TrackReference => 
+      track.source === Track.Source.Camera && 
+      track.publication !== undefined &&
+      track.publication.track !== undefined
+  );
+
+  if (cameraTracks.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-white/60 text-sm">
-        카메라 연결 대기 중...
+        <div className="flex flex-col items-center gap-2">
+          <CameraOff className="w-8 h-8 text-gray-500" />
+          <span>카메라 대기 중...</span>
+        </div>
       </div>
     );
   }
 
+  const gridCols = cameraTracks.length === 1 ? "grid-cols-1" : 
+                   cameraTracks.length <= 4 ? "grid-cols-2" : "grid-cols-3";
+
   return (
-    <GridLayout tracks={tracks} style={{ height: "100%" }}>
-      <ParticipantTile />
-    </GridLayout>
+    <div className={`grid ${gridCols} gap-2 h-full p-2`}>
+      {cameraTracks.map((trackRef) => (
+        <div
+          key={trackRef.participant.sid}
+          className="relative bg-zinc-900 rounded-lg overflow-hidden"
+        >
+          <VideoTrack
+            trackRef={trackRef}
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/60 rounded text-xs text-white">
+            {trackRef.participant.name || trackRef.participant.identity}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CustomControlBar() {
+  const { localParticipant } = useLocalParticipant();
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isCamOn, setIsCamOn] = useState(true);
+
+  const toggleMicrophone = useCallback(async () => {
+    if (localParticipant) {
+      await localParticipant.setMicrophoneEnabled(!isMicOn);
+      setIsMicOn(!isMicOn);
+    }
+  }, [localParticipant, isMicOn]);
+
+  const toggleCamera = useCallback(async () => {
+    if (localParticipant) {
+      await localParticipant.setCameraEnabled(!isCamOn);
+      setIsCamOn(!isCamOn);
+    }
+  }, [localParticipant, isCamOn]);
+
+  return (
+    <div className="flex items-center justify-center gap-3 p-3 border-t border-white/10 bg-zinc-900/50">
+      <button
+        onClick={toggleMicrophone}
+        className={`p-3 rounded-full transition-colors ${
+          isMicOn 
+            ? "bg-zinc-700 hover:bg-zinc-600 text-white" 
+            : "bg-red-500 hover:bg-red-600 text-white"
+        }`}
+        title={isMicOn ? "마이크 끄기" : "마이크 켜기"}
+      >
+        {isMicOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+      </button>
+      
+      <button
+        onClick={toggleCamera}
+        className={`p-3 rounded-full transition-colors ${
+          isCamOn 
+            ? "bg-zinc-700 hover:bg-zinc-600 text-white" 
+            : "bg-red-500 hover:bg-red-600 text-white"
+        }`}
+        title={isCamOn ? "카메라 끄기" : "카메라 켜기"}
+      >
+        {isCamOn ? <Video className="w-5 h-5" /> : <CameraOff className="w-5 h-5" />}
+      </button>
+    </div>
   );
 }
