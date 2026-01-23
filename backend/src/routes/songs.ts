@@ -78,10 +78,16 @@ router.post("/:id/processing-callback", async (req: Request, res: Response) => {
     const id = req.params.id as string;
     const { vocalsUrl, instrumentalUrl, lyrics, duration, status } = req.body;
 
+    const mappedLyrics = lyrics?.map((line: any) => ({
+      startTime: line.start_time ?? line.startTime,
+      endTime: line.end_time ?? line.endTime,
+      text: line.text,
+    }));
+
     await songService.updateProcessingResult(id, {
       vocalsUrl,
       instrumentalUrl,
-      lyrics,
+      lyrics: mappedLyrics,
       duration,
       status: status as ProcessingStatus,
     });
