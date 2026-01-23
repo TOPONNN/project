@@ -7,11 +7,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { 
   Music, Target, MessageSquareText, ArrowLeft, Users, Copy, Check, 
-  Loader2, Play, Search, Youtube, X, Disc3, AlertCircle
+  Loader2, Play, Plus, X, Disc3, AlertCircle, ListMusic, Trash2, SkipForward
 } from "lucide-react";
 import type { RootState } from "@/store";
 import { setRoom } from "@/store/slices/roomSlice";
-import { setGameMode, setGameStatus, setCurrentSong, setQuizQuestions } from "@/store/slices/gameSlice";
+import { 
+  setGameMode, setGameStatus, setCurrentSong, setQuizQuestions,
+  addToQueue, removeFromQueue, updateQueueItem, playNextInQueue
+} from "@/store/slices/gameSlice";
 import { useSocket } from "@/hooks/useSocket";
 import NormalModeGame from "@/components/game/NormalModeGame";
 import PerfectScoreGame from "@/components/game/PerfectScoreGame";
@@ -19,7 +22,6 @@ import LyricsQuizGame from "@/components/game/LyricsQuizGame";
 import KaraokeSongSearch from "@/components/KaraokeSongSearch";
 import dynamic from "next/dynamic";
 
-// VideoRoom은 클라이언트 사이드에서만 로드 (LiveKit은 SSR 지원 안함)
 const VideoRoom = dynamic(() => import("@/components/VideoRoom"), {
   ssr: false,
   loading: () => (
@@ -50,35 +52,10 @@ const modeConfig = {
   },
 };
 
-type RoomStep = "waiting" | "song_search" | "processing" | "ready" | "playing";
-
 interface TJSong {
   number: string;
   title: string;
   artist: string;
-}
-
-interface YouTubeResult {
-  videoId: string;
-  title: string;
-  channel: string;
-  duration: string;
-  thumbnail: string;
-}
-
-interface SelectedSong {
-  id: string;
-  title: string;
-  artist: string;
-  source: "tj" | "youtube";
-  videoId?: string;
-  tjNumber?: string;
-}
-
-interface ProcessingStatus {
-  status: "pending" | "processing" | "completed" | "failed";
-  message: string;
-  progress?: number;
 }
 
 export default function RoomPage() {
@@ -87,7 +64,7 @@ export default function RoomPage() {
   const dispatch = useDispatch();
   const code = params.code as string;
   
-  const { status: gameStatus, currentSong } = useSelector((state: RootState) => state.game);
+  const { status: gameStatus, currentSong, songQueue } = useSelector((state: RootState) => state.game);
   const { participants } = useSelector((state: RootState) => state.room);
   const { emitEvent } = useSocket(code);
   
@@ -107,17 +84,8 @@ export default function RoomPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
-  const [step, setStep] = useState<RoomStep>("waiting");
-  
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchType, setSearchType] = useState<"tj" | "youtube">("tj");
+  const [showAddSong, setShowAddSong] = useState(false);
   const [searching, setSearching] = useState(false);
-  const [tjResults, setTjResults] = useState<TJSong[]>([]);
-  const [youtubeResults, setYoutubeResults] = useState<YouTubeResult[]>([]);
-  
-  const [selectedSong, setSelectedSong] = useState<SelectedSong | null>(null);
-  const [processingStatus, setProcessingStatus] = useState<ProcessingStatus | null>(null);
-  const [processingError, setProcessingError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchRoom = async () => {
@@ -162,104 +130,62 @@ export default function RoomPage() {
     }
   }, []);
 
-  const searchSongs = useCallback(async () => {
-    if (!searchQuery.trim()) return;
+  const addSongToQueue = async (song: TJSong) => {
+    const queueId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    setSearching(true);
-    try {
-      if (searchType === "tj") {
-        const res = await fetch(`/api/search/tj?q=${encodeURIComponent(searchQuery)}&type=title`);
-        const data = await res.json();
-        if (data.success) {
-          setTjResults(data.data.songs || []);
-        }
-      } else {
-        const res = await fetch(`/api/search/youtube?q=${encodeURIComponent(searchQuery + " official audio")}`);
-        const data = await res.json();
-        if (data.success) {
-          setYoutubeResults(data.data || []);
-        }
-      }
-    } catch (e) {
-      console.error("Search error:", e);
-    } finally {
-      setSearching(false);
-    }
-  }, [searchQuery, searchType]);
-
-  const selectTJSong = async (song: TJSong) => {
-    setSelectedSong({
-      id: "",
+    dispatch(addToQueue({
+      id: queueId,
       title: song.title,
       artist: song.artist,
-      source: "tj",
+      addedBy: userName,
+      status: "processing",
       tjNumber: song.number,
-    });
+    }));
     
-    setSearching(true);
+    setShowAddSong(false);
+    
     try {
-      const res = await fetch(`/api/search/youtube?q=${encodeURIComponent(`${song.title} ${song.artist} official audio`)}`);
-      const data = await res.json();
-      if (data.success && data.data.length > 0) {
-        const video = data.data[0];
-        await startProcessing(video.videoId, song.title, song.artist);
-      } else {
-        setProcessingError("YouTube에서 해당 노래를 찾을 수 없습니다.");
-        setSelectedSong(null);
+      const ytRes = await fetch(`/api/search/youtube?q=${encodeURIComponent(`${song.title} ${song.artist} official audio`)}`);
+      const ytData = await ytRes.json();
+      
+      if (!ytData.success || !ytData.data.length) {
+        dispatch(updateQueueItem({ id: queueId, updates: { status: "waiting" } }));
+        return;
       }
-    } catch (e) {
-      setProcessingError("노래 검색 중 오류가 발생했습니다.");
-      setSelectedSong(null);
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const selectYouTubeSong = async (video: YouTubeResult) => {
-    const titleParts = video.title.split("-");
-    const artist = titleParts.length > 1 ? titleParts[0].trim() : video.channel;
-    const title = titleParts.length > 1 ? titleParts.slice(1).join("-").trim() : video.title;
-    
-    setSelectedSong({
-      id: "",
-      title,
-      artist,
-      source: "youtube",
-      videoId: video.videoId,
-    });
-    
-    await startProcessing(video.videoId, title, artist);
-  };
-
-  const startProcessing = async (videoId: string, title: string, artist: string) => {
-    setStep("processing");
-    setProcessingStatus({ status: "pending", message: "노래 다운로드 중..." });
-    setProcessingError(null);
-    
-    try {
+      
+      const video = ytData.data[0];
+      
       const res = await fetch("/api/search/youtube/select", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoId, title, artist }),
+        body: JSON.stringify({ 
+          videoId: video.videoId, 
+          title: song.title, 
+          artist: song.artist 
+        }),
       });
       
       const data = await res.json();
       
       if (!data.success) {
-        throw new Error(data.message || "노래 처리 요청 실패");
+        dispatch(updateQueueItem({ id: queueId, updates: { status: "waiting" } }));
+        return;
       }
       
       const songId = data.data.id;
-      setSelectedSong(prev => prev ? { ...prev, id: songId } : null);
+      dispatch(updateQueueItem({ 
+        id: queueId, 
+        updates: { id: songId, videoId: video.videoId } 
+      }));
       
-      pollProcessingStatus(songId);
-    } catch (e: any) {
-      setProcessingError(e.message || "처리 시작 중 오류가 발생했습니다.");
-      setStep("song_search");
+      pollSongStatus(queueId, songId);
+    } catch (e) {
+      console.error("Error adding song:", e);
+      dispatch(updateQueueItem({ id: queueId, updates: { status: "waiting" } }));
     }
   };
 
-  const pollProcessingStatus = useCallback(async (songId: string) => {
+  const pollSongStatus = useCallback(async (queueId: string, songId: string) => {
     const checkStatus = async () => {
       try {
         const res = await fetch(`/api/songs/${songId}/status`);
@@ -267,74 +193,82 @@ export default function RoomPage() {
         
         if (!data.success) return;
         
-        const status = data.data;
-        setProcessingStatus({
-          status: status.status,
-          message: status.message,
-        });
-        
-        if (status.status === "completed") {
-          const songRes = await fetch(`/api/songs/${songId}`);
-          const songData = await songRes.json();
-          
-          if (songData.success) {
-            const song = songData.data;
-            dispatch(setCurrentSong({
-              id: song.id,
-              title: song.title,
-              artist: song.artist,
-              duration: song.duration || 180,
-              audioUrl: song.originalUrl,
-              instrumentalUrl: song.instrumentalUrl,
-              vocalUrl: song.vocalsUrl,
-              lyrics: song.lyrics?.map((l: any) => ({
-                startTime: l.startTime,
-                endTime: l.endTime,
-                text: l.text,
-              })) || [],
-            }));
-            
-            if (room?.gameMode === "lyrics_quiz") {
-              const quizRes = await fetch(`/api/songs/${songId}/quiz`);
-              const quizData = await quizRes.json();
-              if (quizData.success && quizData.data.questions) {
-                dispatch(setQuizQuestions(quizData.data.questions.map((q: any) => ({
-                  id: q.id,
-                  lyrics: q.questionText,
-                  options: [q.correctAnswer, ...q.wrongAnswers].sort(() => Math.random() - 0.5),
-                  correctIndex: 0,
-                  timeLimit: q.timeLimit,
-                }))));
-              }
-            }
-            
-            setStep("ready");
-          }
-        } else if (status.status === "failed") {
-          setProcessingError("노래 처리에 실패했습니다. 다른 노래를 선택해주세요.");
-          setStep("song_search");
+        if (data.data.status === "completed") {
+          dispatch(updateQueueItem({ id: queueId, updates: { status: "ready" } }));
+        } else if (data.data.status === "failed") {
+          dispatch(updateQueueItem({ id: queueId, updates: { status: "waiting" } }));
         } else {
           setTimeout(() => checkStatus(), 3000);
         }
       } catch (e) {
-        console.error("Status check error:", e);
         setTimeout(() => checkStatus(), 5000);
       }
     };
     
     checkStatus();
-  }, [dispatch, room?.gameMode]);
+  }, [dispatch]);
+
+  const playSong = async (queueItem: typeof songQueue[0]) => {
+    if (queueItem.status !== "ready") return;
+    
+    try {
+      const res = await fetch(`/api/songs/${queueItem.id}`);
+      const data = await res.json();
+      
+      if (!data.success) return;
+      
+      const song = data.data;
+      dispatch(setCurrentSong({
+        id: song.id,
+        title: song.title,
+        artist: song.artist,
+        duration: song.duration || 180,
+        audioUrl: song.originalUrl,
+        instrumentalUrl: song.instrumentalUrl,
+        vocalUrl: song.vocalsUrl,
+        lyrics: song.lyrics?.map((l: any) => ({
+          startTime: l.startTime,
+          endTime: l.endTime,
+          text: l.text,
+        })) || [],
+      }));
+      
+      if (room?.gameMode === "lyrics_quiz") {
+        const quizRes = await fetch(`/api/songs/${queueItem.id}/quiz`);
+        const quizData = await quizRes.json();
+        if (quizData.success && quizData.data.questions) {
+          dispatch(setQuizQuestions(quizData.data.questions.map((q: any) => ({
+            id: q.id,
+            lyrics: q.questionText,
+            options: [q.correctAnswer, ...q.wrongAnswers].sort(() => Math.random() - 0.5),
+            correctIndex: 0,
+            timeLimit: q.timeLimit,
+          }))));
+        }
+      }
+      
+      dispatch(removeFromQueue(queueItem.id));
+      dispatch(setGameStatus("playing"));
+      emitEvent("game:start", { roomCode: code, songId: queueItem.id });
+    } catch (e) {
+      console.error("Error playing song:", e);
+    }
+  };
+
+  const skipToNext = () => {
+    dispatch(setGameStatus("waiting"));
+    dispatch(setCurrentSong(null));
+    
+    const nextReady = songQueue.find(s => s.status === "ready");
+    if (nextReady) {
+      playSong(nextReady);
+    }
+  };
 
   const copyCode = () => {
     navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const startGame = () => {
-    dispatch(setGameStatus("playing"));
-    setStep("playing");
-    emitEvent("game:start", { roomCode: code, songId: selectedSong?.id });
   };
 
   if (loading) {
@@ -360,27 +294,64 @@ export default function RoomPage() {
   const Icon = config.icon;
   const GameComponent = config.Component;
 
-  if (gameStatus === "playing" || step === "playing") {
+  if (gameStatus === "playing" && currentSong) {
     return (
       <div className="min-h-screen bg-black text-white flex flex-col">
+        {/* 상단 대기열 표시 */}
+        {songQueue.length > 0 && (
+          <div className="bg-gradient-to-r from-purple-900/50 to-blue-900/50 border-b border-white/10 px-4 py-2">
+            <div className="flex items-center gap-4 overflow-x-auto">
+              <span className="text-xs text-white/60 whitespace-nowrap">다음 곡:</span>
+              {songQueue.slice(0, 3).map((song, idx) => (
+                <div 
+                  key={song.id} 
+                  className="flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-sm whitespace-nowrap"
+                >
+                  <span className="text-white/40">{idx + 1}</span>
+                  <span className="font-medium">{song.title}</span>
+                  <span className="text-white/60">- {song.artist}</span>
+                  {song.status === "processing" && (
+                    <Loader2 className="w-3 h-3 animate-spin text-yellow-400" />
+                  )}
+                </div>
+              ))}
+              {songQueue.length > 3 && (
+                <span className="text-xs text-white/40">+{songQueue.length - 3}곡</span>
+              )}
+            </div>
+          </div>
+        )}
+
         <header className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-xl border-b border-white/10">
           <button
             onClick={() => {
               dispatch(setGameStatus("waiting"));
-              setStep("ready");
+              dispatch(setCurrentSong(null));
             }}
             className="flex items-center gap-2 text-white/60 hover:text-white transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
-            <span>나가기</span>
+            <span>대기실</span>
           </button>
           <div className="flex items-center gap-3">
             <Icon className="w-5 h-5" style={{ color: config.color }} />
-            <span className="font-bold">{currentSong?.title || room.name}</span>
+            <span className="font-bold">{currentSong.title}</span>
+            <span className="text-white/60">- {currentSong.artist}</span>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/10">
-            <Users className="w-4 h-4" />
-            <span className="text-sm">{participants.length}</span>
+          <div className="flex items-center gap-2">
+            {songQueue.length > 0 && (
+              <button
+                onClick={skipToNext}
+                className="flex items-center gap-1 px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-sm"
+              >
+                <SkipForward className="w-4 h-4" />
+                다음 곡
+              </button>
+            )}
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/10">
+              <Users className="w-4 h-4" />
+              <span className="text-sm">{participants.length}</span>
+            </div>
           </div>
         </header>
 
@@ -414,14 +385,14 @@ export default function RoomPage() {
         />
       </div>
 
-      <header className="relative z-10 flex items-center justify-between p-6 md:p-8">
-        <Link href="/" className="flex items-center gap-2 text-white/60 hover:text-white transition-colors">
+      <header className="relative z-10 flex items-center justify-between p-4 md:p-6">
+        <Link href="/lobby" className="flex items-center gap-2 text-white/60 hover:text-white transition-colors">
           <ArrowLeft className="w-5 h-5" />
-          <span>나가기</span>
+          <span>로비</span>
         </Link>
         <div className="flex items-center gap-3">
           <Icon className="w-6 h-6" style={{ color: config.color }} />
-          <span className="text-xl font-bold">KERO</span>
+          <span className="text-xl font-bold">{room.name}</span>
         </div>
         <button
           onClick={copyCode}
@@ -432,197 +403,158 @@ export default function RoomPage() {
         </button>
       </header>
 
-      <main className="relative z-10 flex flex-col items-center px-6 pb-12">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="text-center max-w-4xl w-full"
-        >
-          <div 
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-4"
-            style={{ backgroundColor: `${config.color}20`, color: config.color }}
-          >
-            <Icon className="w-5 h-5" />
-            <span className="text-sm font-medium">{config.title}</span>
+      <main className="relative z-10 flex gap-6 px-4 md:px-6 pb-6 h-[calc(100vh-80px)]">
+        {/* 왼쪽: 대기열 */}
+        <div className="w-80 flex flex-col bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+          <div className="flex items-center justify-between p-4 border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <ListMusic className="w-5 h-5" style={{ color: config.color }} />
+              <span className="font-bold">대기열</span>
+              <span className="text-sm text-white/60">({songQueue.length}곡)</span>
+            </div>
+            <button
+              onClick={() => setShowAddSong(true)}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium text-black"
+              style={{ backgroundColor: config.color }}
+            >
+              <Plus className="w-4 h-4" />
+              곡 추가
+            </button>
           </div>
-
-          <h1 className="text-3xl md:text-4xl font-bold mb-2">{room.name}</h1>
           
-          <div className="flex items-center justify-center gap-4 mb-6">
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-sm">
-              <Users className="w-4 h-4" />
-              <span>{participants.length} / {room.maxParticipants}</span>
+          <div className="flex-1 overflow-y-auto p-2">
+            {songQueue.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center p-4">
+                <Music className="w-12 h-12 text-white/20 mb-3" />
+                <p className="text-white/40 text-sm">대기열이 비어있습니다</p>
+                <p className="text-white/30 text-xs mt-1">곡을 추가해주세요</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {songQueue.map((song, idx) => (
+                  <motion.div
+                    key={song.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="flex items-center gap-3 p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors group"
+                  >
+                    <div 
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold"
+                      style={{ backgroundColor: `${config.color}30`, color: config.color }}
+                    >
+                      {idx + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{song.title}</p>
+                      <p className="text-sm text-white/60 truncate">{song.artist}</p>
+                      <p className="text-xs text-white/40">{song.addedBy}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {song.status === "processing" && (
+                        <div className="flex items-center gap-1 text-yellow-400">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span className="text-xs">처리중</span>
+                        </div>
+                      )}
+                      {song.status === "ready" && (
+                        <button
+                          onClick={() => playSong(song)}
+                          className="p-2 rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                        >
+                          <Play className="w-4 h-4" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => dispatch(removeFromQueue(song.id))}
+                        className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 오른쪽: 참가자 & 비디오 */}
+        <div className="flex-1 flex flex-col gap-4">
+          {/* 참가자 목록 */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Users className="w-5 h-5" style={{ color: config.color }} />
+              <span className="font-bold">참가자</span>
+              <span className="text-sm text-white/60">({participants.length}/{room.maxParticipants})</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {participants.map((p) => (
+                <div
+                  key={p.id}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm ${
+                    p.isHost ? "bg-yellow-500/20 text-yellow-400" : "bg-white/10"
+                  }`}
+                >
+                  <span>{p.nickname}</span>
+                  {p.isHost && <span>👑</span>}
+                </div>
+              ))}
             </div>
           </div>
 
-          <AnimatePresence mode="wait">
-            {step === "waiting" && (
-              <motion.div
-                key="waiting"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="bg-white/5 border border-white/10 rounded-2xl p-8"
-              >
-                <h2 className="text-xl font-bold mb-4">🎤 노래를 선택하세요</h2>
-                <p className="text-gray-400 mb-6">TJ 노래방 또는 YouTube에서 원하는 노래를 검색하세요</p>
-                
-                <motion.button
-                  onClick={() => setStep("song_search")}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="w-full py-4 rounded-xl font-bold text-lg text-black flex items-center justify-center gap-2"
-                  style={{ backgroundColor: config.color }}
+          {/* 비디오 영역 */}
+          <div className="flex-1 bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+            <div className="p-3 border-b border-white/10">
+              <h3 className="text-sm font-medium text-white/80">참가자 화면</h3>
+            </div>
+            <div className="h-[calc(100%-48px)]">
+              <VideoRoom
+                roomCode={code}
+                participantName={userName}
+                participantId={visitorId}
+              />
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* 곡 추가 모달 */}
+      <AnimatePresence>
+        {showAddSong && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+            onClick={() => setShowAddSong(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-2xl bg-zinc-900 border border-white/10 rounded-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-4 border-b border-white/10">
+                <h2 className="text-xl font-bold">🎤 곡 추가</h2>
+                <button 
+                  onClick={() => setShowAddSong(false)}
+                  className="p-2 rounded-full hover:bg-white/10"
                 >
-                  <Search className="w-5 h-5" />
-                  노래 검색하기
-                </motion.button>
-              </motion.div>
-            )}
-
-            {step === "song_search" && (
-              <motion.div
-                key="song_search"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="bg-white/5 border border-white/10 rounded-2xl p-6"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-bold">🎤 노래 선택</h2>
-                  <button 
-                    onClick={() => setStep("waiting")}
-                    className="p-2 rounded-full hover:bg-white/10"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {processingError && (
-                  <div className="flex items-center gap-2 p-3 mb-4 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400">
-                    <AlertCircle className="w-5 h-5" />
-                    <span>{processingError}</span>
-                  </div>
-                )}
-
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-4 max-h-[70vh] overflow-y-auto">
                 <KaraokeSongSearch
-                  onSelect={selectTJSong}
+                  onSelect={addSongToQueue}
                   isLoading={searching}
                   accentColor={config.color}
                 />
-              </motion.div>
-            )}
-
-            {step === "processing" && (
-              <motion.div
-                key="processing"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="bg-white/5 border border-white/10 rounded-2xl p-8"
-              >
-                <div className="flex flex-col items-center">
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                  >
-                    <Disc3 className="w-16 h-16 mb-4" style={{ color: config.color }} />
-                  </motion.div>
-                  
-                  <h2 className="text-xl font-bold mb-2">🎵 노래 처리 중...</h2>
-                  
-                  {selectedSong && (
-                    <p className="text-gray-400 mb-4">
-                      {selectedSong.title} - {selectedSong.artist}
-                    </p>
-                  )}
-                  
-                  <div className="w-full max-w-md">
-                    <div className="flex items-center justify-between text-sm mb-2">
-                      <span className="text-gray-400">{processingStatus?.message || "준비 중..."}</span>
-                      <span className="text-gray-500">{processingStatus?.status}</span>
-                    </div>
-                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                      <motion.div
-                        className="h-full rounded-full"
-                        style={{ backgroundColor: config.color }}
-                        initial={{ width: "0%" }}
-                        animate={{ 
-                          width: processingStatus?.status === "completed" ? "100%" : 
-                                 processingStatus?.status === "processing" ? "60%" : "20%"
-                        }}
-                        transition={{ duration: 0.5 }}
-                      />
-                    </div>
-                  </div>
-                  
-                  <p className="text-xs text-gray-500 mt-4">
-                    AI가 보컬 분리, 가사 추출, 음정 분석을 진행하고 있습니다
-                  </p>
-                </div>
-              </motion.div>
-            )}
-
-            {step === "ready" && (
-              <motion.div
-                key="ready"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="bg-white/5 border border-white/10 rounded-2xl p-8"
-              >
-                <div className="flex items-center gap-4 mb-6 p-4 bg-white/5 rounded-xl">
-                  <div 
-                    className="w-16 h-16 rounded-xl flex items-center justify-center text-2xl"
-                    style={{ backgroundColor: `${config.color}20` }}
-                  >
-                    🎵
-                  </div>
-                  <div className="flex-1 text-left">
-                    <h3 className="text-xl font-bold">{currentSong?.title || selectedSong?.title}</h3>
-                    <p className="text-gray-400">{currentSong?.artist || selectedSong?.artist}</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setSelectedSong(null);
-                      setStep("song_search");
-                    }}
-                    className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-sm"
-                  >
-                    다른 노래
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap justify-center gap-3 mb-6">
-                  {participants.map((p) => (
-                    <div
-                      key={p.id}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-full ${
-                        p.isHost ? "bg-yellow-500/20 text-yellow-400" : "bg-white/10"
-                      }`}
-                    >
-                      <span>{p.nickname}</span>
-                      {p.isHost && <span className="text-xs">👑</span>}
-                    </div>
-                  ))}
-                </div>
-
-                <motion.button
-                  onClick={startGame}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="w-full py-4 rounded-xl font-bold text-lg text-black flex items-center justify-center gap-2"
-                  style={{ backgroundColor: config.color }}
-                >
-                  <Play className="w-5 h-5" />
-                  게임 시작!
-                </motion.button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      </main>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
