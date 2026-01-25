@@ -2,6 +2,7 @@ import { AppDataSource } from "../config/database";
 import { User } from "../entities";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { uploadFile } from "../config/s3";
 
 const userRepository = AppDataSource.getRepository(User);
 
@@ -43,6 +44,39 @@ export class AuthService {
 
   async getUserById(id: string): Promise<User | null> {
     return userRepository.findOne({ where: { id } });
+  }
+
+  async updateProfile(
+    userId: string,
+    data: { name?: string; profileImage?: string }
+  ): Promise<User> {
+    const user = await userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new Error("사용자를 찾을 수 없습니다.");
+    }
+
+    if (data.name) {
+      user.name = data.name;
+    }
+
+    if (data.profileImage) {
+      try {
+        // Convert base64 to buffer
+        const base64Data = data.profileImage.replace(/^data:image\/\w+;base64,/, "");
+        const buffer = Buffer.from(base64Data, "base64");
+
+        // Upload to S3
+        const timestamp = Date.now();
+        const key = `profiles/${userId}/${timestamp}.jpg`;
+        const imageUrl = await uploadFile(key, buffer, "image/jpeg");
+
+        user.profileImage = imageUrl;
+      } catch (error: any) {
+        throw new Error(`프로필 이미지 업로드 실패: ${error.message}`);
+      }
+    }
+
+    return userRepository.save(user);
   }
 }
 
