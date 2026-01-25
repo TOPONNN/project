@@ -32,11 +32,14 @@ export default function NormalModeGame() {
   const [volume, setVolume] = useState(0.8);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [audioLoaded, setAudioLoaded] = useState(false);
+  const [audioDuration, setAudioDuration] = useState<number>(0);
 
   const lyrics: LyricsLine[] = currentSong?.lyrics || [];
   const audioUrl = currentSong?.instrumentalUrl || currentSong?.audioUrl;
 
   const animationFrameRef = useRef<number | null>(null);
+  
+  const duration = audioDuration || currentSong?.duration || 0;
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -54,6 +57,12 @@ export default function NormalModeGame() {
       setAudioError(null);
     };
 
+    const handleLoadedMetadata = () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        setAudioDuration(audio.duration);
+      }
+    };
+
     const handleError = () => {
       setAudioError("오디오를 불러올 수 없습니다. 다시 시도해주세요.");
       setAudioLoaded(false);
@@ -62,11 +71,13 @@ export default function NormalModeGame() {
     audio.addEventListener("ended", handleEnded);
     audio.addEventListener("canplay", handleCanPlay);
     audio.addEventListener("error", handleError);
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata);
 
     return () => {
       audio.removeEventListener("ended", handleEnded);
       audio.removeEventListener("canplay", handleCanPlay);
       audio.removeEventListener("error", handleError);
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
     };
   }, [dispatch, volume]);
 
@@ -127,13 +138,13 @@ export default function NormalModeGame() {
   }, [isPlaying, audioLoaded]);
 
   const handleSeek = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!audioRef.current || !currentSong?.duration) return;
+    if (!audioRef.current || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const percent = (e.clientX - rect.left) / rect.width;
-    const newTime = percent * currentSong.duration;
+    const newTime = percent * duration;
     audioRef.current.currentTime = newTime;
     setLocalTime(newTime);
-  }, [currentSong?.duration]);
+  }, [duration]);
 
   const handleRestart = useCallback(() => {
     if (!audioRef.current) return;
@@ -148,7 +159,7 @@ export default function NormalModeGame() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const progress = currentSong?.duration ? (localTime / currentSong.duration) * 100 : 0;
+  const progress = duration ? (localTime / duration) * 100 : 0;
 
   const getLyricProgress = (line: LyricsLine) => {
     if (localTime < line.startTime) return 0;
@@ -281,7 +292,7 @@ export default function NormalModeGame() {
                 <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity" />
               </motion.div>
             </div>
-            <span className="text-sm text-gray-400 w-12 font-mono">{formatTime(currentSong.duration || 0)}</span>
+            <span className="text-sm text-gray-400 w-12 font-mono">{formatTime(duration)}</span>
           </div>
 
           <div className="flex items-center justify-between">

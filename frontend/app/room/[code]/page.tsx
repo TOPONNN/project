@@ -238,7 +238,7 @@ export default function RoomPage() {
         id: song.id,
         title: song.title,
         artist: song.artist,
-        duration: song.duration || 180,
+        duration: song.duration || 0,
         audioUrl: song.originalUrl,
         instrumentalUrl: song.instrumentalUrl,
         vocalUrl: song.vocalsUrl,
