@@ -3,7 +3,8 @@ node_modules
 .git
 .gitignore
 *.md
-.env*
+.env.development
+.env.production
 Dockerfile
 docker-compose*.yml
 nginx

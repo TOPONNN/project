@@ -78,10 +78,18 @@ router.post("/:id/processing-callback", async (req: Request, res: Response) => {
     const id = req.params.id as string;
     const { vocalsUrl, instrumentalUrl, lyrics, duration, status } = req.body;
 
+    console.log(`[Callback] Song ${id}: duration=${duration}, lyrics=${lyrics?.length || 0} lines`);
+
+    // words 필드 포함하여 매핑
     const mappedLyrics = lyrics?.map((line: any) => ({
       startTime: line.start_time ?? line.startTime,
       endTime: line.end_time ?? line.endTime,
       text: line.text,
+      words: line.words?.map((w: any) => ({
+        startTime: w.start_time ?? w.startTime,
+        endTime: w.end_time ?? w.endTime,
+        text: w.text,
+      })),
     }));
 
     await songService.updateProcessingResult(id, {
@@ -94,6 +102,7 @@ router.post("/:id/processing-callback", async (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (error: any) {
+    console.error(`[Callback] Error for song ${req.params.id}:`, error.message);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -130,10 +139,15 @@ router.get("/:id", async (req: Request, res: Response) => {
             song.lyrics = results.lyrics.lyrics.map((l: any, idx: number) => ({
               id: `redis-${idx}`,
               songId: id,
-              startTime: l.start_time,
-              endTime: l.end_time,
+              startTime: l.start_time ?? l.startTime,
+              endTime: l.end_time ?? l.endTime,
               text: l.text,
               lineOrder: idx,
+              words: l.words?.map((w: any) => ({
+                startTime: w.start_time ?? w.startTime,
+                endTime: w.end_time ?? w.endTime,
+                text: w.text,
+              })),
             }));
           }
           if (results.lyrics?.duration) {
