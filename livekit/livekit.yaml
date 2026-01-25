@@ -6,7 +6,7 @@ rtc:
   node_ip: 52.78.220.83
 
 keys:
-  APIkeroLiveKit: kero-livekit-secret-key-2026-plyst-info-secure
+  APIkeroLiveKit: kero-livekit-secret-key-2026-kero-ooo-secure
 
 logging:
   level: info
