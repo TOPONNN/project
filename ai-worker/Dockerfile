@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Deno
-RUN curl -fsSL https://deno.land/install.sh | sh
+RUN curl -fsSL https://deno.land/install.sh | sh && \
+    ln -s /root/.deno/bin/deno /usr/local/bin/deno
 ENV DENO_INSTALL="/root/.deno"
 ENV PATH="${DENO_INSTALL}/bin:${PATH}"
 
