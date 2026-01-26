@@ -87,6 +87,7 @@ export default function RoomPage() {
   const [copied, setCopied] = useState(false);
   const [showAddSong, setShowAddSong] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [mediaStatus, setMediaStatus] = useState({ isCameraOn: true, isMicOn: true });
 
   useEffect(() => {
     const fetchRoom = async () => {
@@ -316,8 +317,6 @@ export default function RoomPage() {
   const config = modeConfig[room.gameMode];
   const Icon = config.icon;
   const GameComponent = config.Component;
-
-  const [mediaStatus, setMediaStatus] = useState({ isCameraOn: true, isMicOn: true });
 
   const handleCameraToggle = () => {
     window.dispatchEvent(new Event("kero:toggleCamera"));
