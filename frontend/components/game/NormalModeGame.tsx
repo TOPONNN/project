@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, SkipForward, Volume2, VolumeX, Mic, MicOff, RotateCcw, AlertCircle, Music2 } from "lucide-react";
@@ -184,9 +184,10 @@ export default function NormalModeGame() {
     );
   }
 
-  const youtubeEmbedUrl = videoId 
-    ? `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=${videoId}&modestbranding=1&start=${Math.floor(localTime)}&enablejsapi=1`
-    : null;
+  const youtubeEmbedUrl = useMemo(() => {
+    if (!videoId) return null;
+    return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=${videoId}&modestbranding=1&enablejsapi=1`;
+  }, [videoId]);
 
   const currentLine = lyrics[currentLyricIndex];
   const nextLine = lyrics[currentLyricIndex + 1];
