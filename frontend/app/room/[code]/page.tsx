@@ -163,7 +163,7 @@ export default function RoomPage() {
     setShowAddSong(false);
     
     try {
-      const ytRes = await fetch(`/api/search/youtube?q=${encodeURIComponent(`${song.title} ${song.artist} official audio`)}`);
+      const ytRes = await fetch(`/api/search/youtube?q=${encodeURIComponent(`${song.title} ${song.artist} official MV`)}`);
       const ytData = await ytRes.json();
       
       if (!ytData.success || !ytData.data.length) {
