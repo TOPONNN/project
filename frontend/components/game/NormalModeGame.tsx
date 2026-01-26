@@ -220,18 +220,16 @@ export default function NormalModeGame() {
         )}
       </div>
 
-      <div className="absolute top-0 left-0 right-0 z-20 flex justify-between items-start p-6 bg-gradient-to-b from-black/80 to-transparent">
-        <div>
-          <h1 className="text-3xl font-bold text-white drop-shadow-lg tracking-tight">
-            {currentSong.title}
-          </h1>
-          <p className="text-xl text-white/80 font-medium drop-shadow-md mt-1">
-            {currentSong.artist}
-          </p>
-        </div>
+      <div className="absolute top-0 left-0 right-0 z-20 flex flex-col items-center pt-20 pb-6 bg-gradient-to-b from-black/80 to-transparent">
+        <h1 className="text-3xl font-bold text-white drop-shadow-lg tracking-tight text-center">
+          {currentSong.title}
+        </h1>
+        <p className="text-xl text-white/80 font-medium drop-shadow-md mt-1 text-center">
+          {currentSong.artist}
+        </p>
         
         {songQueue.length > 0 && (
-          <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-white/10">
+          <div className="mt-3 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-white/10">
             <span className="text-white/80 text-sm font-medium">
               예약곡 <span className="text-blue-400 font-bold">{songQueue.length}</span>
             </span>

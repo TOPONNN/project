@@ -7,7 +7,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { 
   Music, Target, MessageSquareText, ArrowLeft, Users, Copy, Check, 
-  Loader2, Play, Plus, X, Disc3, AlertCircle, ListMusic, Trash2, SkipForward
+  Loader2, Play, Plus, X, Disc3, AlertCircle, ListMusic, Trash2, SkipForward,
+  Mic, MicOff, Video, CameraOff
 } from "lucide-react";
 import type { RootState } from "@/store";
 import { setRoom } from "@/store/slices/roomSlice";
@@ -316,6 +317,18 @@ export default function RoomPage() {
   const Icon = config.icon;
   const GameComponent = config.Component;
 
+  const [mediaStatus, setMediaStatus] = useState({ isCameraOn: true, isMicOn: true });
+
+  const handleCameraToggle = () => {
+    window.dispatchEvent(new Event("kero:toggleCamera"));
+    setMediaStatus(prev => ({ ...prev, isCameraOn: !prev.isCameraOn }));
+  };
+
+  const handleMicToggle = () => {
+    window.dispatchEvent(new Event("kero:toggleMic"));
+    setMediaStatus(prev => ({ ...prev, isMicOn: !prev.isMicOn }));
+  };
+
   if (gameStatus === "playing" && currentSong) {
     return (
       <div className="fixed inset-0 bg-black text-white">
@@ -340,7 +353,34 @@ export default function RoomPage() {
             participantName={userName}
             participantId={visitorId}
             hideControls={true}
+            onStatusChange={setMediaStatus}
           />
+        </div>
+
+        <div className="absolute bottom-6 left-6 z-50 flex items-center gap-3">
+          <button
+            onClick={handleMicToggle}
+            className={`p-3 rounded-full backdrop-blur-md transition-all ${
+              mediaStatus.isMicOn 
+                ? "bg-white/20 hover:bg-white/30 text-white" 
+                : "bg-red-500/80 hover:bg-red-500 text-white"
+            }`}
+            title={mediaStatus.isMicOn ? "마이크 끄기" : "마이크 켜기"}
+          >
+            {mediaStatus.isMicOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+          </button>
+          
+          <button
+            onClick={handleCameraToggle}
+            className={`p-3 rounded-full backdrop-blur-md transition-all ${
+              mediaStatus.isCameraOn 
+                ? "bg-white/20 hover:bg-white/30 text-white" 
+                : "bg-red-500/80 hover:bg-red-500 text-white"
+            }`}
+            title={mediaStatus.isCameraOn ? "카메라 끄기" : "카메라 켜기"}
+          >
+            {mediaStatus.isCameraOn ? <Video className="w-5 h-5" /> : <CameraOff className="w-5 h-5" />}
+          </button>
         </div>
       </div>
     );
