@@ -26,7 +26,7 @@ class CrepeProcessor:
             hop_length=160,
             fmin=50,
             fmax=2000,
-            model='medium',
+            model='full',
             device=self.device,
             return_periodicity=True,
         )
