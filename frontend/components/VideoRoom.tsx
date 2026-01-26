@@ -10,16 +10,17 @@ import {
   TrackReference,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { Loader2, VideoOff, Mic, MicOff, Video, Camera, CameraOff } from "lucide-react";
+import { Loader2, VideoOff, Mic, MicOff, Video, CameraOff } from "lucide-react";
 
 interface VideoRoomProps {
   roomCode: string;
   participantName: string;
   participantId?: string;
   hideControls?: boolean;
+  onStatusChange?: (status: { isCameraOn: boolean; isMicOn: boolean }) => void;
 }
 
-export default function VideoRoom({ roomCode, participantName, participantId, hideControls = false }: VideoRoomProps) {
+export default function VideoRoom({ roomCode, participantName, participantId, hideControls = false, onStatusChange }: VideoRoomProps) {
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(true);
@@ -98,19 +99,84 @@ export default function VideoRoom({ roomCode, participantName, participantId, hi
       audio={true}
       style={{ height: "100%", background: "#000" }}
     >
-      <RoomContent hideControls={hideControls} />
+      <RoomContent hideControls={hideControls} onStatusChange={onStatusChange} />
       <RoomAudioRenderer />
     </LiveKitRoom>
   );
 }
 
-function RoomContent({ hideControls }: { hideControls: boolean }) {
+function RoomContent({ hideControls, onStatusChange }: { hideControls: boolean; onStatusChange?: (status: { isCameraOn: boolean; isMicOn: boolean }) => void }) {
+  const { localParticipant } = useLocalParticipant();
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isCamOn, setIsCamOn] = useState(true);
+
+  const toggleMicrophone = useCallback(async () => {
+    if (localParticipant) {
+      const newState = !isMicOn;
+      await localParticipant.setMicrophoneEnabled(newState);
+      setIsMicOn(newState);
+      onStatusChange?.({ isCameraOn: isCamOn, isMicOn: newState });
+    }
+  }, [localParticipant, isMicOn, isCamOn, onStatusChange]);
+
+  const toggleCamera = useCallback(async () => {
+    if (localParticipant) {
+      const newState = !isCamOn;
+      await localParticipant.setCameraEnabled(newState);
+      setIsCamOn(newState);
+      onStatusChange?.({ isCameraOn: newState, isMicOn });
+    }
+  }, [localParticipant, isCamOn, isMicOn, onStatusChange]);
+
+  useEffect(() => {
+    onStatusChange?.({ isCameraOn: isCamOn, isMicOn });
+  }, []);
+
+  useEffect(() => {
+    const handleToggleCamera = () => toggleCamera();
+    const handleToggleMic = () => toggleMicrophone();
+
+    window.addEventListener("kero:toggleCamera", handleToggleCamera);
+    window.addEventListener("kero:toggleMic", handleToggleMic);
+
+    return () => {
+      window.removeEventListener("kero:toggleCamera", handleToggleCamera);
+      window.removeEventListener("kero:toggleMic", handleToggleMic);
+    };
+  }, [toggleCamera, toggleMicrophone]);
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-hidden">
         <VideoGrid />
       </div>
-      {!hideControls && <CustomControlBar />}
+      {!hideControls && (
+        <div className="flex items-center justify-center gap-3 p-3 border-t border-white/10 bg-zinc-900/50">
+          <button
+            onClick={toggleMicrophone}
+            className={`p-3 rounded-full transition-colors ${
+              isMicOn 
+                ? "bg-zinc-700 hover:bg-zinc-600 text-white" 
+                : "bg-red-500 hover:bg-red-600 text-white"
+            }`}
+            title={isMicOn ? "마이크 끄기" : "마이크 켜기"}
+          >
+            {isMicOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+          </button>
+          
+          <button
+            onClick={toggleCamera}
+            className={`p-3 rounded-full transition-colors ${
+              isCamOn 
+                ? "bg-zinc-700 hover:bg-zinc-600 text-white" 
+                : "bg-red-500 hover:bg-red-600 text-white"
+            }`}
+            title={isCamOn ? "카메라 끄기" : "카메라 켜기"}
+          >
+            {isCamOn ? <Video className="w-5 h-5" /> : <CameraOff className="w-5 h-5" />}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -161,54 +227,6 @@ function VideoGrid() {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function CustomControlBar() {
-  const { localParticipant } = useLocalParticipant();
-  const [isMicOn, setIsMicOn] = useState(true);
-  const [isCamOn, setIsCamOn] = useState(true);
-
-  const toggleMicrophone = useCallback(async () => {
-    if (localParticipant) {
-      await localParticipant.setMicrophoneEnabled(!isMicOn);
-      setIsMicOn(!isMicOn);
-    }
-  }, [localParticipant, isMicOn]);
-
-  const toggleCamera = useCallback(async () => {
-    if (localParticipant) {
-      await localParticipant.setCameraEnabled(!isCamOn);
-      setIsCamOn(!isCamOn);
-    }
-  }, [localParticipant, isCamOn]);
-
-  return (
-    <div className="flex items-center justify-center gap-3 p-3 border-t border-white/10 bg-zinc-900/50">
-      <button
-        onClick={toggleMicrophone}
-        className={`p-3 rounded-full transition-colors ${
-          isMicOn 
-            ? "bg-zinc-700 hover:bg-zinc-600 text-white" 
-            : "bg-red-500 hover:bg-red-600 text-white"
-        }`}
-        title={isMicOn ? "마이크 끄기" : "마이크 켜기"}
-      >
-        {isMicOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
-      </button>
-      
-      <button
-        onClick={toggleCamera}
-        className={`p-3 rounded-full transition-colors ${
-          isCamOn 
-            ? "bg-zinc-700 hover:bg-zinc-600 text-white" 
-            : "bg-red-500 hover:bg-red-600 text-white"
-        }`}
-        title={isCamOn ? "카메라 끄기" : "카메라 켜기"}
-      >
-        {isCamOn ? <Video className="w-5 h-5" /> : <CameraOff className="w-5 h-5" />}
-      </button>
     </div>
   );
 }
