@@ -12,7 +12,10 @@ class CrepeProcessor:
     def __init__(self):
         self.model_capacity = "medium"
 
-    def analyze_pitch(self, audio_path: str, song_id: str) -> Dict:
+    def analyze_pitch(self, audio_path: str, song_id: str, folder_name: str = None) -> Dict:
+        if folder_name is None:
+            folder_name = song_id
+            
         audio, sr = librosa.load(audio_path, sr=16000, mono=True)
 
         time, frequency, confidence, activation = crepe.predict(
@@ -32,7 +35,7 @@ class CrepeProcessor:
         with open(pitch_path, "w", encoding="utf-8") as f:
             json.dump(pitch_data, f, indent=2)
 
-        s3_key = f"songs/{song_id}/pitch.json"
+        s3_key = f"songs/{folder_name}/pitch.json"
         pitch_url = s3_service.upload_file(pitch_path, s3_key)
 
         os.remove(pitch_path)

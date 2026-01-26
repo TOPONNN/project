@@ -14,7 +14,10 @@ class WhisperProcessor:
         if self.model is None:
             self.model = whisper.load_model("medium")
 
-    def extract_lyrics(self, audio_path: str, song_id: str, language: str = "ko") -> Dict:
+    def extract_lyrics(self, audio_path: str, song_id: str, language: str = "ko", folder_name: str = None) -> Dict:
+        if folder_name is None:
+            folder_name = song_id
+            
         self._load_model()
 
         result = self.model.transcribe(
@@ -33,7 +36,7 @@ class WhisperProcessor:
         with open(lyrics_path, "w", encoding="utf-8") as f:
             json.dump(lyrics_lines, f, ensure_ascii=False, indent=2)
 
-        s3_key = f"songs/{song_id}/lyrics.json"
+        s3_key = f"songs/{folder_name}/lyrics.json"
         lyrics_url = s3_service.upload_file(lyrics_path, s3_key)
 
         os.remove(lyrics_path)

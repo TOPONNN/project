@@ -17,7 +17,10 @@ class DemucsProcessor:
             self.model = get_model("htdemucs")
             self.model.to(self.device)
 
-    def separate(self, audio_path: str, song_id: str) -> dict:
+    def separate(self, audio_path: str, song_id: str, folder_name: str = None) -> dict:
+        if folder_name is None:
+            folder_name = song_id
+            
         self._load_model()
 
         waveform, sample_rate = torchaudio.load(audio_path)
@@ -47,7 +50,7 @@ class DemucsProcessor:
             output_path = os.path.join(output_dir, f"{name}.wav")
             torchaudio.save(output_path, sources[i].cpu(), self.model.samplerate)
 
-            s3_key = f"songs/{song_id}/{name}.wav"
+            s3_key = f"songs/{folder_name}/{name}.wav"
             url = s3_service.upload_file(output_path, s3_key)
             results[name] = url
 
@@ -62,7 +65,7 @@ class DemucsProcessor:
             instrumental_path = os.path.join(output_dir, "instrumental.wav")
             torchaudio.save(instrumental_path, instrumental.cpu(), self.model.samplerate)
 
-            s3_key = f"songs/{song_id}/instrumental.wav"
+            s3_key = f"songs/{folder_name}/instrumental.wav"
             instrumental_url = s3_service.upload_file(instrumental_path, s3_key)
             results["instrumental"] = instrumental_url
 
