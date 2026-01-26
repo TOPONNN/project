@@ -16,9 +16,10 @@ interface VideoRoomProps {
   roomCode: string;
   participantName: string;
   participantId?: string;
+  hideControls?: boolean;
 }
 
-export default function VideoRoom({ roomCode, participantName, participantId }: VideoRoomProps) {
+export default function VideoRoom({ roomCode, participantName, participantId, hideControls = false }: VideoRoomProps) {
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(true);
@@ -97,19 +98,19 @@ export default function VideoRoom({ roomCode, participantName, participantId }: 
       audio={true}
       style={{ height: "100%", background: "#000" }}
     >
-      <RoomContent />
+      <RoomContent hideControls={hideControls} />
       <RoomAudioRenderer />
     </LiveKitRoom>
   );
 }
 
-function RoomContent() {
+function RoomContent({ hideControls }: { hideControls: boolean }) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-hidden">
         <VideoGrid />
       </div>
-      <CustomControlBar />
+      {!hideControls && <CustomControlBar />}
     </div>
   );
 }

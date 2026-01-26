@@ -318,76 +318,30 @@ export default function RoomPage() {
 
   if (gameStatus === "playing" && currentSong) {
     return (
-      <div className="min-h-screen bg-black text-white flex flex-col">
-        {/* 상단 대기열 표시 */}
-        {songQueue.length > 0 && (
-          <div className="bg-gradient-to-r from-purple-900/50 to-blue-900/50 border-b border-white/10 px-4 py-2">
-            <div className="flex items-center gap-4 overflow-x-auto">
-              <span className="text-xs text-white/60 whitespace-nowrap">다음 곡:</span>
-              {songQueue.slice(0, 3).map((song, idx) => (
-                <div 
-                  key={song.id} 
-                  className="flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-sm whitespace-nowrap"
-                >
-                  <span className="text-white/40">{idx + 1}</span>
-                  <span className="font-medium">{song.title}</span>
-                  <span className="text-white/60">- {song.artist}</span>
-                  {song.status === "processing" && (
-                    <Loader2 className="w-3 h-3 animate-spin text-yellow-400" />
-                  )}
-                </div>
-              ))}
-              {songQueue.length > 3 && (
-                <span className="text-xs text-white/40">+{songQueue.length - 3}곡</span>
-              )}
-            </div>
-          </div>
-        )}
-
-        <header className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-xl border-b border-white/10">
+      <div className="fixed inset-0 bg-black text-white">
+        <GameComponent />
+        
+        <div className="absolute top-4 left-4 z-50">
           <button
             onClick={() => {
               dispatch(setGameStatus("waiting"));
               dispatch(setCurrentSong(null));
             }}
-            className="flex items-center gap-2 text-white/60 hover:text-white transition-colors"
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/50 backdrop-blur-md text-white/80 hover:text-white hover:bg-black/70 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
             <span>대기실</span>
           </button>
-          <div className="flex items-center gap-3">
-            <Icon className="w-5 h-5" style={{ color: config.color }} />
-            <span className="font-bold">{currentSong.title}</span>
-            <span className="text-white/60">- {currentSong.artist}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {songQueue.length > 0 && (
-              <button
-                onClick={skipToNext}
-                className="flex items-center gap-1 px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-sm"
-              >
-                <SkipForward className="w-4 h-4" />
-                다음 곡
-              </button>
-            )}
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/10">
-              <Users className="w-4 h-4" />
-              <span className="text-sm">{participants.length}</span>
-            </div>
-          </div>
-        </header>
+        </div>
 
-        <main className="flex-1 relative">
-          <GameComponent />
-          
-          <div className="absolute top-4 right-4 w-64 h-48 rounded-xl overflow-hidden border border-white/20 shadow-2xl bg-black/50 backdrop-blur-sm z-50">
-            <VideoRoom
-              roomCode={code}
-              participantName={userName}
-              participantId={visitorId}
-            />
-          </div>
-        </main>
+        <div className="absolute top-4 right-4 w-48 h-36 rounded-xl overflow-hidden border border-white/20 shadow-2xl z-50">
+          <VideoRoom
+            roomCode={code}
+            participantName={userName}
+            participantId={visitorId}
+            hideControls={true}
+          />
+        </div>
       </div>
     );
   }
