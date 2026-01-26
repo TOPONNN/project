@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import subprocess
 import requests
 from typing import Dict, Any, Optional
@@ -9,6 +10,13 @@ from src.services.s3_service import s3_service
 from src.processors.demucs_processor import demucs_processor
 from src.processors.whisper_processor import whisper_processor
 from src.processors.crepe_processor import crepe_processor
+
+
+def sanitize_folder_name(name: str) -> str:
+    name = re.sub(r'[<>:"/\\|?*]', '', name)
+    name = re.sub(r'\s+', '_', name)
+    name = name.strip('._')
+    return name[:100] if len(name) > 100 else name
 
 try:
     import redis as redis_lib
@@ -23,7 +31,7 @@ class AIWorker:
         else:
             self.redis_client = None
 
-    def _download_from_youtube(self, video_id: str, song_id: str) -> Optional[str]:
+    def _download_from_youtube(self, video_id: str, song_id: str, folder_name: str) -> Optional[str]:
         output_path = os.path.join(TEMP_DIR, f"{song_id}_original.mp3")
         
         try:
@@ -58,7 +66,7 @@ class AIWorker:
                 return None
             
             if os.path.exists(output_path):
-                s3_key = f"songs/{song_id}/original.mp3"
+                s3_key = f"songs/{folder_name}/original.mp3"
                 s3_service.upload_file(output_path, s3_key)
                 return output_path
             
@@ -71,8 +79,14 @@ class AIWorker:
         song_id = message.get("songId") or message.get("song_id")
         source = message.get("source", "s3")
         tasks = message.get("tasks", ["separate", "lyrics", "pitch"])
+        title = message.get("title", "unknown")
+        artist = message.get("artist", "unknown")
+        
+        folder_name = sanitize_folder_name(f"{title}-{artist}")
+        if not folder_name:
+            folder_name = song_id
 
-        print(f"Processing song {song_id}: {tasks}, source: {source}")
+        print(f"Processing song {song_id} ({folder_name}): {tasks}, source: {source}")
 
         self._update_status(song_id, "processing", "Downloading audio...")
 
@@ -82,7 +96,7 @@ class AIWorker:
             video_id = message.get("videoId")
             if video_id:
                 self._update_status(song_id, "processing", "Downloading from YouTube...")
-                local_audio_path = self._download_from_youtube(video_id, song_id)
+                local_audio_path = self._download_from_youtube(video_id, song_id, folder_name)
                 if not local_audio_path:
                     self._update_status(song_id, "failed", "Failed to download from YouTube")
                     return
@@ -101,7 +115,7 @@ class AIWorker:
         try:
             if "separate" in tasks:
                 self._update_status(song_id, "processing", "Separating vocals and instrumental...")
-                separation_result = demucs_processor.separate(local_audio_path, song_id)
+                separation_result = demucs_processor.separate(local_audio_path, song_id, folder_name)
                 results["separation"] = separation_result
 
                 vocals_path = os.path.join(TEMP_DIR, song_id, "vocals.wav")
@@ -115,13 +129,14 @@ class AIWorker:
 
                 if vocals_path and "vocals.wav" in vocals_path:
                     temp_vocals = os.path.join(TEMP_DIR, f"{song_id}_vocals.wav")
-                    s3_service.download_file(f"songs/{song_id}/vocals.wav", temp_vocals)
+                    s3_service.download_file(f"songs/{folder_name}/vocals.wav", temp_vocals)
                     audio_for_lyrics = temp_vocals
 
                 lyrics_result = whisper_processor.extract_lyrics(
                     audio_for_lyrics,
                     song_id,
                     language=message.get("language", "ko"),
+                    folder_name=folder_name,
                 )
                 results["lyrics"] = lyrics_result
 
@@ -133,10 +148,10 @@ class AIWorker:
                 if vocals_path and "vocals.wav" in vocals_path:
                     temp_vocals = os.path.join(TEMP_DIR, f"{song_id}_vocals.wav")
                     if not os.path.exists(temp_vocals):
-                        s3_service.download_file(f"songs/{song_id}/vocals.wav", temp_vocals)
+                        s3_service.download_file(f"songs/{folder_name}/vocals.wav", temp_vocals)
                     audio_for_pitch = temp_vocals
 
-                pitch_result = crepe_processor.analyze_pitch(audio_for_pitch, song_id)
+                pitch_result = crepe_processor.analyze_pitch(audio_for_pitch, song_id, folder_name)
                 results["pitch"] = pitch_result
 
             self._update_status(song_id, "completed", "Processing complete", results)
