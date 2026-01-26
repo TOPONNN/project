@@ -71,8 +71,8 @@ class WhisperProcessor:
             repetition_penalty=1.1,
             no_repeat_ngram_size=3,
             
-            prepend_punctuations="\"'"¿([{-「『",
-            append_punctuations="\"'.。,，!!?:：;；」』)]}、♪~…",
+            prepend_punctuations="\"'([{-",
+            append_punctuations="\"'.!?:;,)]}-~",
         )
 
         segments_list = []
