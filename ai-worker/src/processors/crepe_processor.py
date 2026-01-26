@@ -1,7 +1,8 @@
 import os
 import json
 import numpy as np
-import crepe
+import torch
+import torchcrepe
 import librosa
 from typing import Dict, List
 from src.config import TEMP_DIR
@@ -10,23 +11,32 @@ from src.services.s3_service import s3_service
 
 class CrepeProcessor:
     def __init__(self):
-        self.model_capacity = "medium"
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     def analyze_pitch(self, audio_path: str, song_id: str, folder_name: str = None) -> Dict:
         if folder_name is None:
             folder_name = song_id
             
         audio, sr = librosa.load(audio_path, sr=16000, mono=True)
+        audio_tensor = torch.tensor(audio).unsqueeze(0).to(self.device)
 
-        time, frequency, confidence, activation = crepe.predict(
-            audio,
+        pitch, periodicity = torchcrepe.predict(
+            audio_tensor,
             sr,
-            model_capacity=self.model_capacity,
-            viterbi=True,
-            step_size=10,
+            hop_length=160,
+            fmin=50,
+            fmax=2000,
+            model='medium',
+            device=self.device,
+            return_periodicity=True,
         )
 
-        pitch_data = self._process_pitch_data(time, frequency, confidence)
+        pitch = pitch.squeeze().cpu().numpy()
+        periodicity = periodicity.squeeze().cpu().numpy()
+        
+        time = np.arange(len(pitch)) * 160 / sr
+
+        pitch_data = self._process_pitch_data(time, pitch, periodicity)
 
         output_dir = os.path.join(TEMP_DIR, song_id)
         os.makedirs(output_dir, exist_ok=True)
@@ -44,7 +54,7 @@ class CrepeProcessor:
         return {
             "pitch_url": pitch_url,
             "pitch_data": pitch_data,
-            "stats": self._calculate_stats(frequency, confidence),
+            "stats": self._calculate_stats(pitch, periodicity),
         }
 
     def _process_pitch_data(
@@ -53,7 +63,7 @@ class CrepeProcessor:
         pitch_points = []
 
         for i in range(len(time)):
-            if confidence[i] > 0.5:
+            if confidence[i] > 0.5 and not np.isnan(frequency[i]):
                 pitch_points.append({
                     "time": round(float(time[i]), 3),
                     "frequency": round(float(frequency[i]), 2),
@@ -65,12 +75,12 @@ class CrepeProcessor:
         return pitch_points
 
     def _frequency_to_midi(self, frequency: float) -> int:
-        if frequency <= 0:
+        if frequency <= 0 or np.isnan(frequency):
             return 0
         return int(round(69 + 12 * np.log2(frequency / 440.0)))
 
     def _frequency_to_note(self, frequency: float) -> str:
-        if frequency <= 0:
+        if frequency <= 0 or np.isnan(frequency):
             return ""
         notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
         midi = self._frequency_to_midi(frequency)
@@ -79,7 +89,7 @@ class CrepeProcessor:
         return f"{notes[note_index]}{octave}"
 
     def _calculate_stats(self, frequency: np.ndarray, confidence: np.ndarray) -> Dict:
-        valid_mask = confidence > 0.5
+        valid_mask = (confidence > 0.5) & ~np.isnan(frequency)
         valid_frequencies = frequency[valid_mask]
 
         if len(valid_frequencies) == 0:
