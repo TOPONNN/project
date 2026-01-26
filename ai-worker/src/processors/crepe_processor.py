@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torchcrepe
 import librosa
-from typing import Dict, List
+from typing import Dict, List, Callable, Optional
 from src.config import TEMP_DIR
 from src.services.s3_service import s3_service
 
@@ -12,27 +12,51 @@ from src.services.s3_service import s3_service
 class CrepeProcessor:
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.chunk_duration = 30  # seconds
 
-    def analyze_pitch(self, audio_path: str, song_id: str, folder_name: str = None) -> Dict:
+    def analyze_pitch(self, audio_path: str, song_id: str, folder_name: str = None, progress_callback: Optional[Callable[[int], None]] = None) -> Dict:
         if folder_name is None:
             folder_name = song_id
             
         audio, sr = librosa.load(audio_path, sr=16000, mono=True)
-        audio_tensor = torch.tensor(audio).unsqueeze(0).to(self.device)
-
-        pitch, periodicity = torchcrepe.predict(
-            audio_tensor,
-            sr,
-            hop_length=160,
-            fmin=50,
-            fmax=2000,
-            model='full',
-            device=self.device,
-            return_periodicity=True,
-        )
-
-        pitch = pitch.squeeze().cpu().numpy()
-        periodicity = periodicity.squeeze().cpu().numpy()
+        
+        # 청크 단위 처리로 CUDA OOM 방지
+        chunk_samples = self.chunk_duration * sr
+        total_chunks = max(1, (len(audio) + chunk_samples - 1) // chunk_samples)
+        
+        all_pitch = []
+        all_periodicity = []
+        
+        for i, start in enumerate(range(0, len(audio), chunk_samples)):
+            chunk = audio[start:start + chunk_samples]
+            audio_tensor = torch.tensor(chunk).unsqueeze(0).to(self.device)
+            
+            pitch_chunk, periodicity_chunk = torchcrepe.predict(
+                audio_tensor,
+                sr,
+                hop_length=160,
+                fmin=50,
+                fmax=2000,
+                model='full',
+                device=self.device,
+                return_periodicity=True,
+            )
+            
+            all_pitch.append(pitch_chunk.squeeze().cpu().numpy())
+            all_periodicity.append(periodicity_chunk.squeeze().cpu().numpy())
+            
+            # GPU 메모리 해제
+            del audio_tensor, pitch_chunk, periodicity_chunk
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            # 진행률 보고
+            if progress_callback:
+                progress_callback(int((i + 1) / total_chunks * 100))
+        
+        # 결과 병합
+        pitch = np.concatenate(all_pitch)
+        periodicity = np.concatenate(all_periodicity)
         
         time = np.arange(len(pitch)) * 160 / sr
 

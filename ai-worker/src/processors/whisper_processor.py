@@ -1,7 +1,7 @@
 import os
 import json
 from faster_whisper import WhisperModel
-from typing import List, Dict
+from typing import List, Dict, Callable, Optional
 from src.config import TEMP_DIR
 from src.services.s3_service import s3_service
 
@@ -14,7 +14,7 @@ class WhisperProcessor:
         if self.model is None:
             self.model = WhisperModel("medium", device="cuda", compute_type="float16")
 
-    def extract_lyrics(self, audio_path: str, song_id: str, language: str = "ko", folder_name: str = None) -> Dict:
+    def extract_lyrics(self, audio_path: str, song_id: str, language: str = "ko", folder_name: str = None, progress_callback: Optional[Callable[[int], None]] = None) -> Dict:
         if folder_name is None:
             folder_name = song_id
             
@@ -26,7 +26,17 @@ class WhisperProcessor:
             word_timestamps=True,
         )
 
-        lyrics_lines = self._process_segments(list(segments))
+        # segment 단위로 진행률 보고
+        segments_list = []
+        total_duration = info.duration if info.duration else 1
+        
+        for segment in segments:
+            segments_list.append(segment)
+            if progress_callback and info.duration:
+                progress = int((segment.end / total_duration) * 100)
+                progress_callback(min(progress, 100))
+        
+        lyrics_lines = self._process_segments(segments_list)
 
         output_dir = os.path.join(TEMP_DIR, song_id)
         os.makedirs(output_dir, exist_ok=True)

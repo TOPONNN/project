@@ -223,12 +223,22 @@ export default function RoomPage() {
         
         if (!data.success) return;
         
-        if (data.data.status === "completed") {
+        const statusData = data.data;
+        
+        if (statusData.status === "completed") {
           dispatch(updateQueueItem({ id: queueId, updates: { status: "ready" } }));
-        } else if (data.data.status === "failed") {
+        } else if (statusData.status === "failed") {
           dispatch(updateQueueItem({ id: queueId, updates: { status: "waiting" } }));
         } else {
-          setTimeout(() => checkStatus(), 3000);
+          dispatch(updateQueueItem({ 
+            id: queueId, 
+            updates: { 
+              processingStep: statusData.step,
+              processingProgress: statusData.progress,
+              processingMessage: statusData.message,
+            } 
+          }));
+          setTimeout(() => checkStatus(), 2000);
         }
       } catch (e) {
         setTimeout(() => checkStatus(), 5000);
@@ -492,9 +502,30 @@ export default function RoomPage() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {song.status === "processing" && (
-                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-yellow-500/20 text-yellow-400">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span className="text-xs hidden sm:inline">처리중</span>
+                      <div className="flex flex-col gap-1.5 min-w-[140px]">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin text-yellow-400" />
+                          <span className="text-xs text-yellow-400 font-medium">
+                            {song.processingStep === "download" && "다운로드 중"}
+                            {song.processingStep === "demucs" && "음원 분리"}
+                            {song.processingStep === "whisper" && "가사 추출"}
+                            {song.processingStep === "crepe" && "음정 분석"}
+                            {!song.processingStep && "처리 대기"}
+                          </span>
+                        </div>
+                        {song.processingProgress !== undefined && (
+                          <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-gradient-to-r from-yellow-400 to-orange-400 transition-all duration-300"
+                              style={{ width: `${song.processingProgress}%` }}
+                            />
+                          </div>
+                        )}
+                        {song.processingProgress !== undefined && (
+                          <span className="text-[10px] text-white/40 text-right">
+                            {song.processingProgress}%
+                          </span>
+                        )}
                       </div>
                     )}
                     {song.status === "ready" && (

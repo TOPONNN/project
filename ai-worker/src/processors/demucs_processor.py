@@ -1,6 +1,7 @@
 import os
 import torch
 import torchaudio
+from typing import Callable, Optional
 from demucs.pretrained import get_model
 from demucs.apply import apply_model
 from src.config import TEMP_DIR
@@ -17,9 +18,13 @@ class DemucsProcessor:
             self.model = get_model("htdemucs")
             self.model.to(self.device)
 
-    def separate(self, audio_path: str, song_id: str, folder_name: str = None) -> dict:
+    def separate(self, audio_path: str, song_id: str, folder_name: str = None, progress_callback: Optional[Callable[[int], None]] = None) -> dict:
         if folder_name is None:
             folder_name = song_id
+        
+        # 시작 진행률 보고
+        if progress_callback:
+            progress_callback(0)
             
         self._load_model()
 
@@ -72,6 +77,10 @@ class DemucsProcessor:
             os.remove(instrumental_path)
 
         os.rmdir(output_dir)
+        
+        # 완료 진행률 보고
+        if progress_callback:
+            progress_callback(100)
 
         return {
             "vocals_url": vocals_url,

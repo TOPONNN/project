@@ -114,8 +114,11 @@ class AIWorker:
 
         try:
             if "separate" in tasks:
-                self._update_status(song_id, "processing", "Separating vocals and instrumental...")
-                separation_result = demucs_processor.separate(local_audio_path, song_id, folder_name)
+                self._update_status(song_id, "processing", "음원 분리 중...", step="demucs", progress=0)
+                separation_result = demucs_processor.separate(
+                    local_audio_path, song_id, folder_name,
+                    progress_callback=lambda p: self._update_status(song_id, "processing", f"음원 분리 중... {p}%", step="demucs", progress=p)
+                )
                 results["separation"] = separation_result
 
                 vocals_path = os.path.join(TEMP_DIR, song_id, "vocals.wav")
@@ -123,7 +126,7 @@ class AIWorker:
                     local_audio_path = vocals_path
 
             if "lyrics" in tasks:
-                self._update_status(song_id, "processing", "Extracting lyrics...")
+                self._update_status(song_id, "processing", "가사 추출 중...", step="whisper", progress=0)
                 vocals_path = results.get("separation", {}).get("vocals_url")
                 audio_for_lyrics = local_audio_path
 
@@ -137,11 +140,12 @@ class AIWorker:
                     song_id,
                     language=message.get("language", "ko"),
                     folder_name=folder_name,
+                    progress_callback=lambda p: self._update_status(song_id, "processing", f"가사 추출 중... {p}%", step="whisper", progress=p)
                 )
                 results["lyrics"] = lyrics_result
 
             if "pitch" in tasks:
-                self._update_status(song_id, "processing", "Analyzing pitch...")
+                self._update_status(song_id, "processing", "음정 분석 중...", step="crepe", progress=0)
                 vocals_path = results.get("separation", {}).get("vocals_url")
                 audio_for_pitch = local_audio_path
 
@@ -151,7 +155,10 @@ class AIWorker:
                         s3_service.download_file(f"songs/{folder_name}/vocals.wav", temp_vocals)
                     audio_for_pitch = temp_vocals
 
-                pitch_result = crepe_processor.analyze_pitch(audio_for_pitch, song_id, folder_name)
+                pitch_result = crepe_processor.analyze_pitch(
+                    audio_for_pitch, song_id, folder_name,
+                    progress_callback=lambda p: self._update_status(song_id, "processing", f"음정 분석 중... {p}%", step="crepe", progress=p)
+                )
                 results["pitch"] = pitch_result
 
             self._update_status(song_id, "completed", "Processing complete", results)
@@ -166,7 +173,7 @@ class AIWorker:
         finally:
             self._cleanup_temp_files(song_id)
 
-    def _update_status(self, song_id: str, status: str, message: str, results: Dict = None):
+    def _update_status(self, song_id: str, status: str, message: str, results: Dict = None, step: str = None, progress: int = None):
         status_data = {
             "song_id": song_id,
             "status": status,
@@ -174,11 +181,15 @@ class AIWorker:
         }
         if results:
             status_data["results"] = results
+        if step:
+            status_data["step"] = step
+        if progress is not None:
+            status_data["progress"] = progress
 
         if self.redis_client:
             self.redis_client.set(f"song:processing:{song_id}", json.dumps(status_data), ex=3600)
             self.redis_client.publish("kero:song:status", json.dumps(status_data))
-        print(f"Status update: {song_id} - {status} - {message}")
+        print(f"Status update: {song_id} - {status} - {message}" + (f" [{step} {progress}%]" if step and progress is not None else ""))
 
     def _send_callback_to_backend(self, song_id: str, results: Dict):
         try:

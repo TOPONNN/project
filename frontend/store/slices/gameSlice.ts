@@ -43,6 +43,9 @@ interface QueuedSong {
   status: "waiting" | "processing" | "ready";
   videoId?: string;
   tjNumber?: string;
+  processingStep?: "download" | "demucs" | "whisper" | "crepe";
+  processingProgress?: number;
+  processingMessage?: string;
 }
 
 interface GameState {
