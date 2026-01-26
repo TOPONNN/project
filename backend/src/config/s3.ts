@@ -20,7 +20,6 @@ export async function uploadFile(key: string, body: Buffer, contentType: string)
     Key: key,
     Body: body,
     ContentType: contentType,
-    ACL: "public-read",
   });
 
   await s3Client.send(command);
