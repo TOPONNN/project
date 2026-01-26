@@ -377,21 +377,15 @@ export default function RoomPage() {
           </div>
         </header>
 
-        <main className="flex-1 flex">
-          <div className="flex-1">
-            <GameComponent />
-          </div>
-          <div className="w-80 h-full border-l border-white/10 bg-black/30">
-            <div className="p-3 border-b border-white/10">
-              <h3 className="text-sm font-medium text-white/80">참가자 화면</h3>
-            </div>
-            <div className="h-[calc(100%-48px)]">
-              <VideoRoom
-                roomCode={code}
-                participantName={userName}
-                participantId={visitorId}
-              />
-            </div>
+        <main className="flex-1 relative">
+          <GameComponent />
+          
+          <div className="absolute top-4 right-4 w-64 h-48 rounded-xl overflow-hidden border border-white/20 shadow-2xl bg-black/50 backdrop-blur-sm z-50">
+            <VideoRoom
+              roomCode={code}
+              participantName={userName}
+              participantId={visitorId}
+            />
           </div>
         </main>
       </div>
