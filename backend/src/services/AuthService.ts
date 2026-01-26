@@ -59,21 +59,13 @@ export class AuthService {
       user.name = data.name;
     }
 
-    if (data.profileImage) {
-      try {
-        // Convert base64 to buffer
-        const base64Data = data.profileImage.replace(/^data:image\/\w+;base64,/, "");
-        const buffer = Buffer.from(base64Data, "base64");
-
-        // Upload to S3
-        const timestamp = Date.now();
-        const key = `profiles/${userId}/${timestamp}.jpg`;
-        const imageUrl = await uploadFile(key, buffer, "image/jpeg");
-
-        user.profileImage = imageUrl;
-      } catch (error: any) {
-        throw new Error(`프로필 이미지 업로드 실패: ${error.message}`);
-      }
+    if (data.profileImage && !data.profileImage.startsWith("https://")) {
+      const base64Data = data.profileImage.replace(/^data:image\/\w+;base64,/, "");
+      const buffer = Buffer.from(base64Data, "base64");
+      const timestamp = Date.now();
+      const key = `profiles/${userId}/${timestamp}.jpg`;
+      const imageUrl = await uploadFile(key, buffer, "image/jpeg");
+      user.profileImage = imageUrl;
     }
 
     return userRepository.save(user);
