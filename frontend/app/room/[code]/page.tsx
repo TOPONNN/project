@@ -203,9 +203,8 @@ export default function RoomPage() {
       }
       
       const songId = data.data.id;
-      const songStatus = data.data.status;
+      const songStatus = data.data.processingStatus || data.data.status;
       
-      // If song is already completed, set ready immediately without polling
       if (songStatus === "completed") {
         dispatch(updateQueueItem({ 
           id: queueId, 
