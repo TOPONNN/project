@@ -40,12 +40,13 @@ interface QueuedSong {
   title: string;
   artist: string;
   addedBy: string;
-  status: "waiting" | "processing" | "ready";
+  status: "waiting" | "processing" | "ready" | "failed";
   videoId?: string;
   tjNumber?: string;
   processingStep?: "download" | "demucs" | "whisper" | "crepe";
   processingProgress?: number;
   processingMessage?: string;
+  errorMessage?: string;
 }
 
 interface GameState {

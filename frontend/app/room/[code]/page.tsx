@@ -228,7 +228,13 @@ export default function RoomPage() {
         if (statusData.status === "completed") {
           dispatch(updateQueueItem({ id: queueId, updates: { status: "ready" } }));
         } else if (statusData.status === "failed") {
-          dispatch(updateQueueItem({ id: queueId, updates: { status: "waiting" } }));
+          dispatch(updateQueueItem({ 
+            id: queueId, 
+            updates: { 
+              status: "failed",
+              errorMessage: statusData.message || "처리 중 오류가 발생했습니다"
+            } 
+          }));
         } else {
           dispatch(updateQueueItem({ 
             id: queueId, 
@@ -524,6 +530,20 @@ export default function RoomPage() {
                         {song.processingProgress !== undefined && (
                           <span className="text-[10px] text-white/40 text-right">
                             {song.processingProgress}%
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {song.status === "failed" && (
+                      <div className="flex flex-col gap-1 min-w-[140px]">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-red-400 font-medium">
+                            ❌ 처리 실패
+                          </span>
+                        </div>
+                        {song.errorMessage && (
+                          <span className="text-[10px] text-red-400/70 truncate max-w-[140px]" title={song.errorMessage}>
+                            {song.errorMessage}
                           </span>
                         )}
                       </div>
