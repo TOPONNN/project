@@ -142,28 +142,43 @@ class WhisperProcessor:
         return full_text, detected_language
 
     def _align_with_whisperx(self, audio, text: str, language: str) -> List[Dict]:
-        """
-        Stage 2: Word-level alignment using WhisperX.
-        
-        Takes the accurate text from Stage 1 and aligns it to the audio
-        to get word-level timestamps.
-        
-        Args:
-            audio: Audio array loaded by whisperx.load_audio
-            text: Transcribed text from Stage 1
-            language: Language code
-            
-        Returns:
-            List of segment dictionaries with word-level timestamps
-        """
+        """Stage 2: Word-level alignment using WhisperX."""
         print(f"[Stage 2: WhisperX] Aligning text to audio...")
         
-        # Create segments structure that WhisperX expects for alignment
-        # We need to provide the text in segment format
-        segments_for_align = [{"text": text, "start": 0.0, "end": len(audio) / 16000}]
+        # Split text into sentences for better alignment
+        sentences = re.split(r'(?<=[.!?。！？])\s*', text)
+        sentences = [s.strip() for s in sentences if s.strip()]
+        
+        # If no sentence breaks, split into chunks for alignment
+        if len(sentences) <= 1:
+            # Split every 6 words for better karaoke alignment
+            words = text.split()
+            sentences = []
+            chunk = []
+            for word in words:
+                chunk.append(word)
+                if len(chunk) >= 6 or word.endswith((',', '，', '~', '요', '다', '네', '죠')):
+                    sentences.append(' '.join(chunk))
+                    chunk = []
+            if chunk:
+                sentences.append(' '.join(chunk))
+        
+        # Create segments with estimated timings
+        duration = len(audio) / 16000
+        avg_duration = duration / len(sentences) if sentences else duration
+        
+        segments_for_align = []
+        for i, sentence in enumerate(sentences):
+            segments_for_align.append({
+                "text": sentence,
+                "start": i * avg_duration,
+                "end": (i + 1) * avg_duration
+            })
+        
+        print(f"[Stage 2: WhisperX] Split into {len(segments_for_align)} segments for alignment")
         
         try:
-            # Load alignment model if needed (cache by language)
+            # Load alignment model if needed
             if self.align_model is None or self.align_language != language:
                 print(f"[Stage 2: WhisperX] Loading alignment model for {language}...")
                 self.align_model, self.align_metadata = whisperx.load_align_model(
@@ -190,7 +205,6 @@ class WhisperProcessor:
             
         except Exception as e:
             print(f"[Stage 2: WhisperX] Alignment failed: {e}")
-            # Fallback: return single segment with no word timings
             return [{"text": text, "start": 0.0, "end": len(audio) / 16000, "words": []}]
 
     def extract_lyrics(self, audio_path: str, song_id: str, language: str = "ko", folder_name: Optional[str] = None, progress_callback: Optional[Callable[[int], None]] = None) -> Dict:
@@ -409,10 +423,10 @@ class WhisperProcessor:
         # Sort words by start time
         all_words = sorted(all_words, key=lambda w: w.get("start_time", 0))
         
-        # Group words into lines (target: 5-15 words per line)
-        MIN_WORDS = 5
-        MAX_WORDS = 15
-        TARGET_WORDS = 10
+        # Group words into lines (karaoke style: short lines)
+        MIN_WORDS = 3
+        MAX_WORDS = 8
+        TARGET_WORDS = 5
         
         lines = []
         current_words = []
