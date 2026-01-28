@@ -328,45 +328,35 @@ export default function NormalModeGame() {
                 transition={{ duration: 0.2, ease: "easeOut" }}
                 className="relative"
               >
-                <div className="flex flex-wrap justify-center gap-x-2 gap-y-1 leading-relaxed">
+                <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 leading-relaxed">
                   {currentLine.words && currentLine.words.length > 0 ? (
                     currentLine.words.map((word, i) => {
                       const progress = getWordProgressInLine(currentLine, i);
-                      const isActive = progress > 0 && progress < 100;
-                      const isComplete = progress >= 100;
                       
                       return (
                         <span 
                           key={`${currentLyricIndex}-${i}`} 
-                          className={`relative text-4xl md:text-5xl lg:text-6xl font-black tracking-wide transition-transform duration-100 ${
-                            isActive ? "scale-105" : ""
-                          }`}
-                          style={{ 
-                            background: isComplete 
-                              ? "linear-gradient(90deg, #22d3ee, #3b82f6, #a855f7)" 
-                              : isActive 
-                                ? `linear-gradient(90deg, #22d3ee ${progress}%, rgba(255,255,255,0.8) ${progress}%)`
-                                : "none",
-                            WebkitBackgroundClip: (isComplete || isActive) ? "text" : "unset",
-                            WebkitTextFillColor: (isComplete || isActive) ? "transparent" : "rgba(255,255,255,0.8)",
-                            textShadow: isComplete ? "0 0 20px rgba(59,130,246,0.8)" : "0 2px 10px rgba(0,0,0,0.8)",
-                          }}
+                          className="relative text-4xl md:text-5xl lg:text-6xl font-black"
                         >
-                          {word.text}
+                          <span className="text-white/70">{word.text}</span>
+                          <span 
+                            className="absolute left-0 top-0 text-cyan-400 overflow-hidden whitespace-nowrap"
+                            style={{ width: `${progress}%` }}
+                          >
+                            {word.text}
+                          </span>
                         </span>
                       );
                     })
                   ) : (
-                    <span 
-                      className="text-4xl md:text-5xl lg:text-6xl font-black tracking-wide"
-                      style={{ 
-                        background: `linear-gradient(90deg, #22d3ee ${getLineProgress(currentLine)}%, rgba(255,255,255,0.8) ${getLineProgress(currentLine)}%)`,
-                        WebkitBackgroundClip: "text",
-                        WebkitTextFillColor: "transparent",
-                        textShadow: "0 2px 10px rgba(0,0,0,0.8)",
-                      }}
-                    >
-                      {currentLine.text}
+                    <span className="relative text-4xl md:text-5xl lg:text-6xl font-black">
+                      <span className="text-white/70">{currentLine.text}</span>
+                      <span 
+                        className="absolute left-0 top-0 text-cyan-400 overflow-hidden whitespace-nowrap"
+                        style={{ width: `${getLineProgress(currentLine)}%` }}
+                      >
+                        {currentLine.text}
+                      </span>
                     </span>
                   )}
                 </div>
