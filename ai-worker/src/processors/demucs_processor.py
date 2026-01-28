@@ -2,8 +2,8 @@ import os
 import torch
 import torchaudio
 from typing import Callable, Optional
-from demucs.pretrained import get_model
-from demucs.apply import apply_model
+from demucs_infer.pretrained import get_model
+from demucs_infer.apply import apply_model
 from src.config import TEMP_DIR
 from src.services.s3_service import s3_service
 
