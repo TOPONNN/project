@@ -50,33 +50,38 @@ export default function NormalModeGame() {
   
   const duration = audioDuration || currentSong?.duration || 0;
 
-  // 정확한 가사 인덱스 계산 함수 (노래방 스타일)
   const findCurrentLyricIndex = useCallback((time: number): number => {
-    let newIndex = -1;
+    if (lyrics.length === 0) return -1;
+    
+    // 첫 번째 가사 시작 전이면 -1 반환
+    if (time < lyrics[0].startTime - 0.5) return -1;
+    
     for (let i = 0; i < lyrics.length; i++) {
       const line = lyrics[i];
       const nextLine = lyrics[i + 1];
       
-      if (time >= line.startTime) {
-        if (time <= line.endTime) {
-          newIndex = i;
-          break;
-        } else if (nextLine && time < nextLine.startTime && time - line.endTime < 1.0) {
-          newIndex = i;
-          break;
-        } else if (!nextLine && time <= line.endTime + 2.0) {
-          newIndex = i;
-          break;
-        }
+      // 현재 라인 범위 내
+      if (time >= line.startTime && time <= line.endTime) {
+        return i;
       }
-    }
-
-    if (newIndex !== -1) {
-      return newIndex;
-    } else if (lyrics.length > 0 && time > lyrics[lyrics.length - 1].endTime) {
-      return lyrics.length - 1;
-    } else if (lyrics.length > 0 && time < lyrics[0]?.startTime) {
-      return -1;
+      
+      // 현재 라인 끝났지만 다음 라인 시작 전 (갭 구간)
+      if (time > line.endTime && nextLine && time < nextLine.startTime) {
+        // 갭이 2초 이하면 현재 라인 유지
+        if (nextLine.startTime - line.endTime <= 2.0) {
+          return i;
+        }
+        return -1;
+      }
+      
+      // 마지막 라인 이후
+      if (!nextLine && time > line.endTime) {
+        // 끝난 후 2초까지만 마지막 라인 표시
+        if (time <= line.endTime + 2.0) {
+          return i;
+        }
+        return -1;
+      }
     }
     
     return -1;
@@ -214,15 +219,21 @@ export default function NormalModeGame() {
 
   const progress = duration ? (localTime / duration) * 100 : 0;
 
-  // 단어별 하이라이트 진행률 계산 (노래방 스타일)
-  const getWordProgress = useCallback((word: LyricsWord): number => {
-    const adjustedStart = word.startTime - SYNC_CONFIG.WORD_LEAD_TIME;
-    const wordDuration = word.endTime - adjustedStart;
+  // 단어별 하이라이트 진행률 계산 (라인 기반으로 균등 분배)
+  const getWordProgressInLine = useCallback((line: LyricsLine, wordIndex: number): number => {
+    if (!line.words || line.words.length === 0) return 0;
     
-    if (localTime < adjustedStart) return 0;
-    if (localTime >= word.endTime) return 100;
+    const lineDuration = line.endTime - line.startTime;
+    const wordCount = line.words.length;
+    const wordDuration = lineDuration / wordCount;
     
-    return Math.min(100, Math.max(0, ((localTime - adjustedStart) / wordDuration) * 100));
+    const wordStart = line.startTime + (wordIndex * wordDuration);
+    const wordEnd = wordStart + wordDuration;
+    
+    if (localTime < wordStart) return 0;
+    if (localTime >= wordEnd) return 100;
+    
+    return Math.min(100, Math.max(0, ((localTime - wordStart) / wordDuration) * 100));
   }, [localTime]);
 
   // 라인 전체 진행률 (단어가 없을 때 사용)
@@ -320,7 +331,7 @@ export default function NormalModeGame() {
                 <div className="flex flex-wrap justify-center gap-x-2 gap-y-1 leading-relaxed">
                   {currentLine.words && currentLine.words.length > 0 ? (
                     currentLine.words.map((word, i) => {
-                      const progress = getWordProgress(word);
+                      const progress = getWordProgressInLine(currentLine, i);
                       const isActive = progress > 0 && progress < 100;
                       const isComplete = progress >= 100;
                       
@@ -330,35 +341,32 @@ export default function NormalModeGame() {
                           className={`relative text-4xl md:text-5xl lg:text-6xl font-black tracking-wide transition-transform duration-100 ${
                             isActive ? "scale-105" : ""
                           }`}
+                          style={{ 
+                            background: isComplete 
+                              ? "linear-gradient(90deg, #22d3ee, #3b82f6, #a855f7)" 
+                              : isActive 
+                                ? `linear-gradient(90deg, #22d3ee ${progress}%, rgba(255,255,255,0.8) ${progress}%)`
+                                : "none",
+                            WebkitBackgroundClip: (isComplete || isActive) ? "text" : "unset",
+                            WebkitTextFillColor: (isComplete || isActive) ? "transparent" : "rgba(255,255,255,0.8)",
+                            textShadow: isComplete ? "0 0 20px rgba(59,130,246,0.8)" : "0 2px 10px rgba(0,0,0,0.8)",
+                          }}
                         >
-                          {/* 배경 텍스트 (흰색) */}
-                          <span className={`${isComplete ? "text-transparent" : "text-white/80"} drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]`}>
-                            {word.text}
-                          </span>
-                          
-                          {/* 하이라이트 오버레이 (그라디언트) */}
-                          <span 
-                            className="absolute inset-0 bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 bg-clip-text text-transparent drop-shadow-[0_0_20px_rgba(59,130,246,0.8)]"
-                            style={{ 
-                              clipPath: `inset(0 ${100 - progress}% 0 0)`,
-                            }}
-                          >
-                            {word.text}
-                          </span>
+                          {word.text}
                         </span>
                       );
                     })
                   ) : (
-                    <span className="relative text-4xl md:text-5xl lg:text-6xl font-black tracking-wide">
-                      <span className="text-white/80 drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">
-                        {currentLine.text}
-                      </span>
-                      <span 
-                        className="absolute inset-0 bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 bg-clip-text text-transparent"
-                        style={{ clipPath: `inset(0 ${100 - getLineProgress(currentLine)}% 0 0)` }}
-                      >
-                        {currentLine.text}
-                      </span>
+                    <span 
+                      className="text-4xl md:text-5xl lg:text-6xl font-black tracking-wide"
+                      style={{ 
+                        background: `linear-gradient(90deg, #22d3ee ${getLineProgress(currentLine)}%, rgba(255,255,255,0.8) ${getLineProgress(currentLine)}%)`,
+                        WebkitBackgroundClip: "text",
+                        WebkitTextFillColor: "transparent",
+                        textShadow: "0 2px 10px rgba(0,0,0,0.8)",
+                      }}
+                    >
+                      {currentLine.text}
                     </span>
                   )}
                 </div>
