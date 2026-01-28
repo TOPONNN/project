@@ -39,7 +39,7 @@ router.get("/tj/popular", async (req: Request, res: Response) => {
     const { period = "monthly", country = "ALL", limit = "100" } = req.query;
     const songs = await tjKaraokeService.searchPopular(
       period as "daily" | "weekly" | "monthly",
-      country as "KOR" | "JPN" | "ENG" | "CHN" | "ALL",
+      country as "KOR" | "JPN" | "ENG" | "ALL",
       parseInt(limit as string)
     );
     res.json({ success: true, data: { songs, total: songs.length } });
@@ -53,7 +53,7 @@ router.get("/tj/new", async (req: Request, res: Response) => {
   try {
     const { country = "ALL", limit = "100" } = req.query;
     const songs = await tjKaraokeService.getNewReleases(
-      country as "KOR" | "JPN" | "ENG" | "CHN" | "ALL",
+      country as "KOR" | "JPN" | "ENG" | "ALL",
       parseInt(limit as string)
     );
     res.json({ success: true, data: { songs, total: songs.length } });
@@ -68,7 +68,7 @@ router.get("/tj/chart/:country", async (req: Request, res: Response) => {
     const country = req.params.country as string;
     const { period = "monthly" } = req.query;
     const songs = await tjKaraokeService.getChartByCountry(
-      country.toUpperCase() as "KOR" | "JPN" | "ENG" | "CHN" | "ALL",
+      country.toUpperCase() as "KOR" | "JPN" | "ENG" | "ALL",
       period as "daily" | "weekly" | "monthly"
     );
     res.json({ success: true, data: { songs, total: songs.length, country, period } });

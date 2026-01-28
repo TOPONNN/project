@@ -17,12 +17,11 @@ interface SearchResult {
   hasMore: boolean;
 }
 
-type Country = "KOR" | "JPN" | "ENG" | "CHN" | "ALL";
+type Country = "KOR" | "JPN" | "ENG" | "ALL";
 type ChartPeriod = "daily" | "weekly" | "monthly";
 
 const KOREAN_PATTERN = /[가-힣]/;
 const JAPANESE_KANA_PATTERN = /[\u3040-\u309F\u30A0-\u30FF]/;
-const CJK_PATTERN = /[\u4E00-\u9FFF]/;
 
 export class TJKaraokeService {
   private readonly baseUrl = "https://api.manana.kr/karaoke";
@@ -34,8 +33,6 @@ export class TJKaraokeService {
     
     if (JAPANESE_KANA_PATTERN.test(text)) return "JPN";
     
-    if (CJK_PATTERN.test(text)) return "CHN";
-    
     return "ENG";
   }
 
@@ -46,7 +43,7 @@ export class TJKaraokeService {
 
   async searchByTitle(title: string, page: number = 1): Promise<SearchResult> {
     try {
-      const searchTerm = title.replace(/\s+/g, "");
+      const searchTerm = title.trim();
       const response = await axios.get(`${this.baseUrl}/song/${encodeURIComponent(searchTerm)}/tj.json`);
       const songs = this.parseResponse(response.data);
       
@@ -68,7 +65,7 @@ export class TJKaraokeService {
 
   async searchByArtist(artist: string, page: number = 1): Promise<SearchResult> {
     try {
-      const searchTerm = artist.replace(/\s+/g, "");
+      const searchTerm = artist.trim();
       const response = await axios.get(`${this.baseUrl}/singer/${encodeURIComponent(searchTerm)}/tj.json`);
       const songs = this.parseResponse(response.data);
 
@@ -123,23 +120,8 @@ export class TJKaraokeService {
     }
   }
 
-  async getInternationalChart(country: Country, limit: number = 100): Promise<TJSong[]> {
-    try {
-      const response = await axios.get(`${this.baseUrl}/tj.json`);
-      const allSongs = this.parseResponse(response.data);
-      const filtered = this.filterByCountry(allSongs, country);
-      return filtered.slice(0, limit);
-    } catch (error) {
-      console.error("TJ international chart error:", error);
-      return [];
-    }
-  }
-
   async getChartByCountry(country: Country, period: ChartPeriod = "monthly"): Promise<TJSong[]> {
-    if (country === "KOR" || country === "ALL") {
-      return this.searchPopular(period, country);
-    }
-    return this.getInternationalChart(country);
+    return this.searchPopular(period, country);
   }
 
   private parseResponse(data: unknown): TJSong[] {

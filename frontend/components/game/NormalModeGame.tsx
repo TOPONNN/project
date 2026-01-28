@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, SkipForward, Volume2, VolumeX, Mic, MicOff, RotateCcw, AlertCircle, Music2 } from "lucide-react";
+import { Play, Pause, SkipForward, Volume2, VolumeX, Mic, MicOff, Video, CameraOff, RotateCcw, AlertCircle, Music2 } from "lucide-react";
 import type { RootState } from "@/store";
 import { updateCurrentTime, setGameStatus } from "@/store/slices/gameSlice";
 
@@ -34,7 +34,8 @@ export default function NormalModeGame() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [isMicOn, setIsMicOn] = useState(false);
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isCamOn, setIsCamOn] = useState(true);
   const [localTime, setLocalTime] = useState(0);
   const [currentLyricIndex, setCurrentLyricIndex] = useState(-1);
   const [volume, setVolume] = useState(0.8);
@@ -211,6 +212,16 @@ export default function NormalModeGame() {
     setLocalTime(0);
     setCurrentLyricIndex(-1);
   }, []);
+
+  const handleMicToggle = () => {
+    window.dispatchEvent(new Event("kero:toggleMic"));
+    setIsMicOn(!isMicOn);
+  };
+
+  const handleCameraToggle = () => {
+    window.dispatchEvent(new Event("kero:toggleCamera"));
+    setIsCamOn(!isCamOn);
+  };
 
   const formatTime = (time: number) => {
     const mins = Math.floor(time / 60);
@@ -422,64 +433,74 @@ export default function NormalModeGame() {
           </div>
 
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 group">
-                 <button
-                  onClick={() => setIsMuted(!isMuted)}
-                  className="p-2 text-gray-400 hover:text-white transition-colors"
-                >
-                  {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-                </button>
-                <div className="w-0 overflow-hidden group-hover:w-24 transition-all duration-300">
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={volume}
-                    onChange={(e) => {
-                      const newVolume = parseFloat(e.target.value);
-                      setVolume(newVolume);
-                      if (audioRef.current) audioRef.current.volume = newVolume;
-                    }}
-                    className="w-20 h-1 accent-blue-500"
-                  />
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 group">
+                  <button
+                    onClick={() => setIsMuted(!isMuted)}
+                    className="p-2 text-gray-400 hover:text-white transition-colors"
+                  >
+                    {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                  </button>
+                  <div className="w-0 overflow-hidden group-hover:w-24 transition-all duration-300">
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={volume}
+                      onChange={(e) => {
+                        const newVolume = parseFloat(e.target.value);
+                        setVolume(newVolume);
+                        if (audioRef.current) audioRef.current.volume = newVolume;
+                      }}
+                      className="w-20 h-1 accent-blue-500"
+                    />
+                  </div>
                 </div>
               </div>
-              
-              <button
-                onClick={() => setIsMicOn(!isMicOn)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${
-                  isMicOn 
-                  ? "bg-green-500/20 text-green-400 border border-green-500/50" 
-                  : "bg-white/10 text-gray-400 border border-transparent hover:bg-white/20"
-                }`}
-              >
-                {isMicOn ? <Mic className="w-3 h-3" /> : <MicOff className="w-3 h-3" />}
-                <span>{isMicOn ? "Mic On" : "Mic Off"}</span>
-              </button>
-            </div>
 
-            <div className="flex items-center gap-6">
-              <button
-                onClick={handleRestart}
-                className="p-2 text-white/60 hover:text-white transition-colors hover:rotate-[-30deg]"
-              >
-                <RotateCcw className="w-6 h-6" />
-              </button>
-              
-              <button
-                onClick={togglePlay}
-                disabled={!audioLoaded}
-                className="w-14 h-14 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg shadow-white/10 disabled:opacity-50 disabled:scale-100"
-              >
-                {isPlaying ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-1" />}
-              </button>
-              
-              <button className="p-2 text-white/60 hover:text-white transition-colors">
-                <SkipForward className="w-6 h-6" />
-              </button>
-            </div>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleMicToggle}
+                  className={`p-2.5 rounded-full transition-all ${
+                    isMicOn 
+                    ? "bg-white/20 hover:bg-white/30 text-white" 
+                    : "bg-red-500/80 hover:bg-red-500 text-white"
+                  }`}
+                >
+                  {isMicOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+                </button>
+
+                <button
+                  onClick={handleCameraToggle}
+                  className={`p-2.5 rounded-full transition-all ${
+                    isCamOn 
+                    ? "bg-white/20 hover:bg-white/30 text-white" 
+                    : "bg-red-500/80 hover:bg-red-500 text-white"
+                  }`}
+                >
+                  {isCamOn ? <Video className="w-5 h-5" /> : <CameraOff className="w-5 h-5" />}
+                </button>
+
+                <button
+                  onClick={handleRestart}
+                  className="p-2 text-white/60 hover:text-white transition-colors hover:rotate-[-30deg]"
+                >
+                  <RotateCcw className="w-6 h-6" />
+                </button>
+                
+                <button
+                  onClick={togglePlay}
+                  disabled={!audioLoaded}
+                  className="w-14 h-14 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg shadow-white/10 disabled:opacity-50 disabled:scale-100"
+                >
+                  {isPlaying ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-1" />}
+                </button>
+                
+                <button className="p-2 text-white/60 hover:text-white transition-colors">
+                  <SkipForward className="w-6 h-6" />
+                </button>
+              </div>
 
             <div className="w-[140px] hidden md:block" /> 
           </div>
