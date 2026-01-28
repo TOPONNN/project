@@ -46,7 +46,12 @@ export class SongService {
     data: {
       vocalsUrl?: string;
       instrumentalUrl?: string;
-      lyrics?: Array<{ startTime: number; endTime: number; text: string }>;
+      lyrics?: Array<{ 
+        startTime: number; 
+        endTime: number; 
+        text: string;
+        words?: Array<{ startTime: number; endTime: number; text: string }>;
+      }>;
       duration?: number;
       status: ProcessingStatus;
     }
@@ -66,6 +71,7 @@ export class SongService {
           endTime: line.endTime,
           text: line.text,
           lineOrder: index,
+          words: line.words,
         })
       );
       await lyricsRepository.save(lyricsLines);
@@ -208,7 +214,6 @@ export class SongService {
       artist: artist,
       source: "youtube",
       tasks: ["download", "separate", "lyrics", "pitch"],
-      language: "ko",
       callbackUrl: `${process.env.API_URL}/api/songs/${savedSong.id}/processing-callback`,
     });
 

@@ -138,7 +138,7 @@ class AIWorker:
                 lyrics_result = whisper_processor.extract_lyrics(
                     audio_for_lyrics,
                     song_id,
-                    language=message.get("language", "ko"),
+                    language=message.get("language"),  # None = auto-detect
                     folder_name=folder_name,
                     progress_callback=lambda p: self._update_status(song_id, "processing", f"가사 추출 중... {p}%", step="whisper", progress=p)
                 )

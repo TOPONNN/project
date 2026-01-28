@@ -92,7 +92,7 @@ class WhisperProcessor:
         }
         return prompts.get(language, prompts["en"])
 
-    def _transcribe_text_only(self, audio_path: str, language: str) -> tuple[str, str]:
+    def _transcribe_text_only(self, audio_path: str, language: Optional[str] = None) -> tuple[str, str]:
         """
         Stage 1: Pure text extraction using faster-whisper large-v3.
         
@@ -101,21 +101,24 @@ class WhisperProcessor:
         
         Args:
             audio_path: Path to the audio file
-            language: Language code for transcription
+            language: Language code for transcription (None = auto-detect)
             
         Returns:
             Tuple of (transcribed_text, detected_language)
         """
         self._load_whisper_model()
         
-        initial_prompt = self._get_initial_prompt(language)
+        # Get initial prompt if language is specified
+        initial_prompt = self._get_initial_prompt(language) if language else None
         
-        print(f"[Stage 1: Whisper] Transcribing with large-v3 (language={language})...")
+        lang_str = language if language else "auto-detect"
+        print(f"[Stage 1: Whisper] Transcribing with large-v3 (language={lang_str})...")
         
         # Use faster-whisper for pure text extraction
+        # language=None enables auto-detection
         segments, info = self.whisper_model.transcribe(
             audio_path,
-            language=language,
+            language=language,  # None = auto-detect
             initial_prompt=initial_prompt,
             beam_size=5,
             best_of=5,
@@ -207,7 +210,7 @@ class WhisperProcessor:
             print(f"[Stage 2: WhisperX] Alignment failed: {e}")
             return [{"text": text, "start": 0.0, "end": len(audio) / 16000, "words": []}]
 
-    def extract_lyrics(self, audio_path: str, song_id: str, language: str = "ko", folder_name: Optional[str] = None, progress_callback: Optional[Callable[[int], None]] = None) -> Dict:
+    def extract_lyrics(self, audio_path: str, song_id: str, language: Optional[str] = None, folder_name: Optional[str] = None, progress_callback: Optional[Callable[[int], None]] = None) -> Dict:
         """
         3-Stage Lyrics Extraction Pipeline:
         

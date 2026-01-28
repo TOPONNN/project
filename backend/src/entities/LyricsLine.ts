@@ -21,6 +21,9 @@ export class LyricsLine {
   @Column({ type: "int" })
   lineOrder!: number;
 
+  @Column({ type: "json", nullable: true })
+  words?: Array<{ startTime: number; endTime: number; text: string }>;
+
   @ManyToOne(() => Song, (song) => song.lyrics, { onDelete: "CASCADE" })
   @JoinColumn({ name: "songId" })
   song!: Song;
