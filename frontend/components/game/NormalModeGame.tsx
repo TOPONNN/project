@@ -38,7 +38,7 @@ export default function NormalModeGame() {
   const [isCamOn, setIsCamOn] = useState(true);
   const [localTime, setLocalTime] = useState(0);
   const [currentLyricIndex, setCurrentLyricIndex] = useState(-1);
-  const [volume, setVolume] = useState(0.8);
+  const [volume, setVolume] = useState(1.0);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [audioLoaded, setAudioLoaded] = useState(false);
   const [audioDuration, setAudioDuration] = useState<number>(0);
@@ -433,7 +433,8 @@ export default function NormalModeGame() {
           </div>
 
           <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
+                {/* Volume */}
                 <div className="flex items-center gap-2 group">
                   <button
                     onClick={() => setIsMuted(!isMuted)}
@@ -449,39 +450,42 @@ export default function NormalModeGame() {
                       step="0.01"
                       value={volume}
                       onChange={(e) => {
-                        const newVolume = parseFloat(e.target.value);
-                        setVolume(newVolume);
-                        if (audioRef.current) audioRef.current.volume = newVolume;
+                        const v = parseFloat(e.target.value);
+                        setVolume(v);
+                        if (audioRef.current) audioRef.current.volume = v;
                       }}
                       className="w-20 h-1 accent-blue-500"
                     />
                   </div>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-4">
+                {/* Divider */}
+                <div className="w-px h-6 bg-white/20" />
+
+                {/* LiveKit Controls */}
                 <button
                   onClick={handleMicToggle}
-                  className={`p-2.5 rounded-full transition-all ${
+                  className={`p-2 rounded-full transition-all ${
                     isMicOn 
-                    ? "bg-white/20 hover:bg-white/30 text-white" 
-                    : "bg-red-500/80 hover:bg-red-500 text-white"
+                    ? "text-white/60 hover:text-white" 
+                    : "bg-red-500/80 text-white"
                   }`}
                 >
-                  {isMicOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+                  {isMicOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
                 </button>
-
                 <button
                   onClick={handleCameraToggle}
-                  className={`p-2.5 rounded-full transition-all ${
+                  className={`p-2 rounded-full transition-all ${
                     isCamOn 
-                    ? "bg-white/20 hover:bg-white/30 text-white" 
-                    : "bg-red-500/80 hover:bg-red-500 text-white"
+                    ? "text-white/60 hover:text-white" 
+                    : "bg-red-500/80 text-white"
                   }`}
                 >
-                  {isCamOn ? <Video className="w-5 h-5" /> : <CameraOff className="w-5 h-5" />}
+                  {isCamOn ? <Video className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
                 </button>
+              </div>
 
+              <div className="flex items-center gap-6">
                 <button
                   onClick={handleRestart}
                   className="p-2 text-white/60 hover:text-white transition-colors hover:rotate-[-30deg]"

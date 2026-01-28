@@ -22,6 +22,7 @@ type ChartPeriod = "daily" | "weekly" | "monthly";
 
 const KOREAN_PATTERN = /[가-힣]/;
 const JAPANESE_KANA_PATTERN = /[\u3040-\u309F\u30A0-\u30FF]/;
+const CJK_KANJI_PATTERN = /[\u4E00-\u9FFF]/;
 
 export class TJKaraokeService {
   private readonly baseUrl = "https://api.manana.kr/karaoke";
@@ -32,6 +33,7 @@ export class TJKaraokeService {
     if (KOREAN_PATTERN.test(text)) return "KOR";
     
     if (JAPANESE_KANA_PATTERN.test(text)) return "JPN";
+    if (CJK_KANJI_PATTERN.test(text)) return "JPN";
     
     return "ENG";
   }
