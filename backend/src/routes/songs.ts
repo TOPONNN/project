@@ -219,4 +219,24 @@ router.get("/:id/pitch", async (req: Request, res: Response) => {
   }
 });
 
+router.delete("/:id", async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    await songService.deleteSong(id);
+    res.json({ success: true, message: "Song deleted successfully" });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post("/:id/reprocess", async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const song = await songService.reprocessSong(id);
+    res.json({ success: true, data: song });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 export default router;

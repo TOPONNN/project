@@ -225,6 +225,40 @@ export class SongService {
     if (!song) return null;
     return { status: song.processingStatus };
   }
+
+  async deleteSong(songId: string): Promise<void> {
+    await lyricsRepository.delete({ songId });
+    await quizRepository.delete({ songId });
+    await songRepository.delete({ id: songId });
+  }
+
+  async reprocessSong(songId: string): Promise<Song> {
+    const song = await songRepository.findOne({ where: { id: songId } });
+    if (!song) {
+      throw new Error("Song not found");
+    }
+
+    await lyricsRepository.delete({ songId });
+    await quizRepository.delete({ songId });
+
+    song.processingStatus = ProcessingStatus.PENDING;
+    song.vocalsUrl = undefined;
+    song.instrumentalUrl = undefined;
+    song.duration = undefined;
+    await songRepository.save(song);
+
+    await publishMessage(QUEUES.AUDIO_PROCESSING, {
+      songId: song.id,
+      videoId: song.videoId,
+      title: song.title,
+      artist: song.artist,
+      source: "youtube",
+      tasks: ["download", "separate", "lyrics", "pitch"],
+      callbackUrl: `${process.env.API_URL}/api/songs/${song.id}/processing-callback`,
+    });
+
+    return song;
+  }
 }
 
 export const songService = new SongService();

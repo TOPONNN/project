@@ -144,6 +144,21 @@ class WhisperProcessor:
         detected_language = result.get("language", language or "en")
         segments = result.get("segments", [])
         
+        # Check if text contains significant Korean characters
+        # If detected as English but contains Korean, force Korean language
+        full_text_check = " ".join([seg.get("text", "") for seg in segments])
+        korean_chars = len(re.findall(r'[\uac00-\ud7af]', full_text_check))
+        total_chars = len(re.sub(r'\s', '', full_text_check))
+        
+        if total_chars > 0:
+            korean_ratio = korean_chars / total_chars
+            if detected_language == "en" and korean_ratio > 0.2:
+                print(f"[WhisperX] Detected Korean text ({korean_ratio:.1%}), forcing language to 'ko'")
+                detected_language = "ko"
+            elif korean_ratio > 0.5:
+                print(f"[WhisperX] High Korean ratio ({korean_ratio:.1%}), forcing language to 'ko'")
+                detected_language = "ko"
+        
         print(f"[WhisperX] Detected language: {detected_language}")
         print(f"[WhisperX] Transcribed {len(segments)} segments")
         
