@@ -11,6 +11,7 @@ interface LyricsWord {
   startTime: number;
   endTime: number;
   text: string;
+  energy?: number;
 }
 
 interface LyricsLine {
@@ -233,7 +234,15 @@ export default function NormalModeGame() {
     if (localTime < wordStart) return 0;
     if (localTime >= wordEnd) return 100;
     
-    return Math.min(100, Math.max(0, ((localTime - wordStart) / wordDuration) * 100));
+    const currentWord = line.words[wordIndex];
+    const energy = currentWord.energy ?? 0.5;
+    const linearProgress = ((localTime - wordStart) / wordDuration) * 100;
+    
+    // Energy-based easing
+    const exponent = 1 / (0.5 + energy);
+    const easedProgress = Math.pow(linearProgress / 100, exponent) * 100;
+    
+    return Math.min(100, Math.max(0, easedProgress));
   }, [localTime]);
 
   // 라인 전체 진행률 (단어가 없을 때 사용)
