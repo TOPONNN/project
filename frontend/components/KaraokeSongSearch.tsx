@@ -21,7 +21,7 @@ interface KaraokeSongSearchProps {
 }
 
 type Tab = "chart" | "new" | "search";
-type Country = "ALL" | "KOR" | "JPN" | "ENG" | "CHN";
+type Country = "ALL" | "KOR" | "JPN" | "ENG";
 type ChartPeriod = "daily" | "weekly" | "monthly";
 type SearchType = "title" | "artist" | "number";
 
@@ -30,7 +30,6 @@ const COUNTRY_CONFIG: Record<Country, { label: string; flag: string }> = {
   KOR: { label: "한국", flag: "🇰🇷" },
   JPN: { label: "일본", flag: "🇯🇵" },
   ENG: { label: "팝송", flag: "🇺🇸" },
-  CHN: { label: "중국", flag: "🇨🇳" },
 };
 
 const PERIOD_CONFIG: Record<ChartPeriod, string> = {
