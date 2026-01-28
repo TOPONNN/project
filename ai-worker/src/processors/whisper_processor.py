@@ -4,6 +4,7 @@ import re
 import gc
 import torch
 import numpy as np
+import librosa
 
 _original_torch_load = torch.load
 def _patched_torch_load(*args, **kwargs):
@@ -231,6 +232,21 @@ class WhisperProcessor:
         print("=" * 60)
         
         lyrics_lines = self._refine_with_mfa(audio_path, lyrics_lines, detected_language)
+        
+        print("=" * 60)
+        print("[Stage 4: Energy] Analyzing vocal intensity...")
+        print("=" * 60)
+        
+        # Stage 4: Energy analysis using vocals from demucs separation
+        vocals_path = os.path.join(TEMP_DIR, song_id, "vocals.wav")
+        if os.path.exists(vocals_path):
+            lyrics_lines = self._add_energy_to_words(vocals_path, lyrics_lines)
+        else:
+            print(f"[Energy] Vocals file not found at {vocals_path}, skipping energy analysis")
+            # Assign default energy values
+            for segment in lyrics_lines:
+                for word in segment.get("words", []):
+                    word["energy"] = 0.5
         
         if progress_callback:
             progress_callback(90)
@@ -548,6 +564,54 @@ class WhisperProcessor:
         print(f"[MFA] Mapped {used}/{len(mfa_queue)} words")
         
         return refined
+
+    def _add_energy_to_words(self, vocals_path: str, segments: List[Dict]) -> List[Dict]:
+        """Add RMS energy values (0.0-1.0) to each word based on vocal intensity"""
+        try:
+            print(f"[Energy] Loading vocals from {vocals_path}...")
+            y, sr = librosa.load(vocals_path, sr=16000)
+            
+            # Calculate RMS energy with small hop length for precision
+            rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
+            times = librosa.times_like(rms, sr=sr, hop_length=512)
+            
+            # Get global min/max for normalization
+            rms_min, rms_max = rms.min(), rms.max()
+            rms_range = rms_max - rms_min + 1e-8
+            
+            total_words = 0
+            energy_added = 0
+            
+            for segment in segments:
+                words = segment.get("words", [])
+                for word in words:
+                    total_words += 1
+                    start_time = word.get("start_time", 0)
+                    end_time = word.get("end_time", 0)
+                    
+                    start_idx = np.searchsorted(times, start_time)
+                    end_idx = np.searchsorted(times, end_time)
+                    
+                    if start_idx < end_idx and end_idx <= len(rms):
+                        word_rms = rms[start_idx:end_idx].mean()
+                        # Normalize to 0-1
+                        energy = (word_rms - rms_min) / rms_range
+                        word["energy"] = round(float(energy), 3)
+                        energy_added += 1
+                    else:
+                        # Default for very short words or edge cases
+                        word["energy"] = 0.5
+            
+            print(f"[Energy] Added energy values to {energy_added}/{total_words} words")
+            return segments
+            
+        except Exception as e:
+            print(f"[Energy] Failed to calculate energy: {e}")
+            # Assign default energy values on failure
+            for segment in segments:
+                for word in segment.get("words", []):
+                    word["energy"] = 0.5
+            return segments
 
 
 whisper_processor = WhisperProcessor()
