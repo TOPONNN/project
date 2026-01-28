@@ -1,6 +1,6 @@
---extra-index-url https://download.pytorch.org/whl/cu124
-torch==2.8.0
-torchaudio==2.8.0
+--extra-index-url https://download.pytorch.org/whl/cu126
+torch==2.8.0+cu126
+torchaudio==2.8.0+cu126
 
 faster-whisper==1.2.1
 whisperx==3.7.6
@@ -8,15 +8,17 @@ whisperx==3.7.6
 demucs-infer==4.1.2
 torchcrepe==0.0.24
 
-numpy==2.4.1
-scipy==1.15.3
-librosa==0.11.0
-pika==1.3.2
-redis==7.1.0
-boto3==1.42.36
-python-dotenv==1.2.1
-pydub==0.25.1
-soundfile==0.13.1
-requests==2.32.5
-yt-dlp==2025.12.08
-matplotlib==3.10.8
+numpy>=2.0.0
+scipy>=1.14.0
+librosa>=0.10.2
+numba>=0.60.0
+
+pika>=1.3.2
+redis>=5.0.0
+boto3>=1.35.0
+python-dotenv>=1.0.0
+pydub>=0.25.1
+soundfile>=0.13.0
+requests>=2.32.0
+yt-dlp>=2024.12.0
+matplotlib>=3.9.0

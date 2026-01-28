@@ -1,4 +1,4 @@
-FROM python:3.11-slim-bullseye
+FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 
@@ -27,21 +27,22 @@ RUN wget -q https://github.com/conda-forge/miniforge/releases/latest/download/Mi
     rm /tmp/miniforge.sh
 ENV PATH="${CONDA_DIR}/bin:${PATH}"
 
-# Install MFA in separate environment with Python 3.11
-RUN conda create -n mfa python=3.11 montreal-forced-aligner -y && \
+# Install MFA in separate environment with Python 3.12
+RUN conda create -n mfa python=3.12 montreal-forced-aligner -y && \
     conda clean -afy
 ENV PATH="${CONDA_DIR}/envs/mfa/bin:${PATH}"
 
 # Install Korean/Japanese tokenizer support for MFA
 RUN pip install python-mecab-ko jamo fugashi unidic-lite
 
-# Download MFA acoustic models and dictionaries
-RUN mfa model download acoustic english_us_arpa && \
-    mfa model download dictionary english_us_arpa && \
-    mfa model download acoustic korean_mfa && \
-    mfa model download dictionary korean_mfa && \
-    mfa model download acoustic japanese_mfa && \
-    mfa model download dictionary japanese_mfa
+# Download MFA acoustic models and dictionaries (with GitHub token to avoid rate limit)
+ARG GITHUB_TOKEN
+RUN mfa model download acoustic english_us_arpa --github_token ${GITHUB_TOKEN} && \
+    mfa model download dictionary english_us_arpa --github_token ${GITHUB_TOKEN} && \
+    mfa model download acoustic korean_mfa --github_token ${GITHUB_TOKEN} && \
+    mfa model download dictionary korean_mfa --github_token ${GITHUB_TOKEN} && \
+    mfa model download acoustic japanese_mfa --github_token ${GITHUB_TOKEN} && \
+    mfa model download dictionary japanese_mfa --github_token ${GITHUB_TOKEN}
 
 # Install FFmpeg 6 (static build for av compatibility)
 RUN curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz | tar -xJ && \
@@ -63,17 +64,17 @@ ENV UV_PROJECT_ENVIRONMENT=/app/venv
 ENV VIRTUAL_ENV=/app/venv
 ENV UV_LINK_MODE=copy
 ENV UV_PYTHON_DOWNLOADS=0
-ENV UV_PYTHON=3.11
+ENV UV_PYTHON=3.12
 
 # Copy requirements and install dependencies
 COPY requirements.txt ./
 RUN uv venv /app/venv && \
-    uv pip install --no-cache -r requirements.txt
+    uv pip install --no-cache --index-strategy unsafe-best-match -r requirements.txt
 
 # Set environment for PyTorch bundled cuDNN
 ENV PATH="/app/venv/bin:${PATH}"
-ENV PYTHONPATH="/app/venv/lib/python3.11/site-packages"
-ENV LD_LIBRARY_PATH="/app/venv/lib/python3.11/site-packages/nvidia/cudnn/lib:/app/venv/lib/python3.11/site-packages/nvidia/cublas/lib:/app/venv/lib/python3.11/site-packages/nvidia/cufft/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+ENV PYTHONPATH="/app/venv/lib/python3.12/site-packages"
+ENV LD_LIBRARY_PATH="/app/venv/lib/python3.12/site-packages/nvidia/cudnn/lib:/app/venv/lib/python3.12/site-packages/nvidia/cublas/lib:/app/venv/lib/python3.12/site-packages/nvidia/cufft/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
 COPY src/ ./src/
 
