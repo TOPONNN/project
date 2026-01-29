@@ -286,8 +286,8 @@ class LyricsProcessor:
             print(f"[Pitch] Loading vocals from {vocals_path}...")
             audio, sr = librosa.load(vocals_path, sr=16000, mono=True)
             
-            # Process in chunks to avoid CUDA OOM (30 seconds each)
-            chunk_duration = 30
+            # Process in chunks to avoid CUDA OOM
+            chunk_duration = 60  # Larger chunks since tiny model uses less VRAM
             chunk_samples = chunk_duration * sr
             
             all_pitch = []
@@ -300,10 +300,10 @@ class LyricsProcessor:
                 pitch_chunk, periodicity_chunk = torchcrepe.predict(
                     audio_tensor,
                     sr,
-                    hop_length=160,     # 10ms resolution
-                    fmin=50,
-                    fmax=2000,
-                    model='full',
+                    hop_length=320,     # 20ms resolution (sufficient for word-level averages)
+                    fmin=65,            # C2 - lowest practical singing note
+                    fmax=1047,          # C6 - highest practical singing note
+                    model='tiny',       # Fast model, accurate enough for word averages
                     device=self.device,
                     return_periodicity=True,
                 )
@@ -317,7 +317,7 @@ class LyricsProcessor:
             
             pitch = np.concatenate(all_pitch)
             periodicity = np.concatenate(all_periodicity)
-            time = np.arange(len(pitch)) * 160 / sr  # 10ms per frame
+            time = np.arange(len(pitch)) * 320 / sr  # 20ms per frame (matches hop_length)
             
             # Helper functions (same as crepe_processor.py)
             def freq_to_midi(freq):

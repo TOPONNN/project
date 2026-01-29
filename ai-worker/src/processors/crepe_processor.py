@@ -12,7 +12,7 @@ from src.services.s3_service import s3_service
 class CrepeProcessor:
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.chunk_duration = 30  # seconds
+        self.chunk_duration = 60  # seconds - larger chunks since small model uses less VRAM
 
     def analyze_pitch(self, audio_path: str, song_id: str, folder_name: str = None, progress_callback: Optional[Callable[[int], None]] = None) -> Dict:
         if folder_name is None:
@@ -34,10 +34,10 @@ class CrepeProcessor:
             pitch_chunk, periodicity_chunk = torchcrepe.predict(
                 audio_tensor,
                 sr,
-                hop_length=160,
-                fmin=50,
-                fmax=2000,
-                model='full',
+                hop_length=160,       # Keep 10ms for real-time scoring
+                fmin=65,              # C2 - lowest practical singing note
+                fmax=1047,            # C6 - highest practical singing note
+                model='small',        # Good accuracy, much faster than full
                 device=self.device,
                 return_periodicity=True,
             )
