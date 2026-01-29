@@ -398,20 +398,19 @@ function LobbyContent() {
                         <span className="flex items-center gap-1">
                            Host {room.participants?.find(p => p.isHost)?.nickname || "Unknown"}
                         </span>
-                        <span>{room.code}</span>
+                        <div className="flex items-center gap-2">
+                          {room.hostId === userId && (
+                            <button
+                              onClick={(e) => deleteRoom(e, room.code)}
+                              className="p-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <span>{room.code}</span>
+                        </div>
                       </div>
                     </div>
-
-                    {room.hostId === userId && (
-                      <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                         <button
-                          onClick={(e) => deleteRoom(e, room.code)}
-                          className="p-2 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-colors"
-                         >
-                           <Trash2 className="w-4 h-4" />
-                         </button>
-                      </div>
-                    )}
                   </motion.div>
                 );
               })}
