@@ -39,6 +39,13 @@ Thumbs.db
 # Session files
 session.json
 
-# YouTube cookies (contains sensitive login data)
-# Keep youtube.txt as it contains setup instructions
-# backend/cookies/youtube.txt
+# AI tooling
+.sisyphus/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Sensitive cookies
+backend/cookies/
