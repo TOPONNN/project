@@ -5,6 +5,7 @@ import gc
 import torch
 import numpy as np
 import librosa
+import torchcrepe
 
 _original_torch_load = torch.load
 def _patched_torch_load(*args, **kwargs):
@@ -123,6 +124,42 @@ class WhisperProcessor:
             return True
         return False
 
+    def _fetch_lyrics_from_api(self, title: Optional[str], artist: Optional[str]) -> Optional[str]:
+        if not title:
+            return None
+
+        try:
+            from src.config import LYRICS_API_URL
+            import requests
+
+            params = {"title": title}
+            if artist:
+                params["artist"] = artist
+
+            url = f"{LYRICS_API_URL}/v2/youtube/lyrics"
+            print(f"[Lyrics API] Fetching: {url} params={params}")
+
+            response = requests.get(url, params=params, timeout=15)
+
+            if response.status_code == 200:
+                data = response.json()
+                lyrics_text = data.get("data", {}).get("lyrics")
+                # "respone" is the API's actual typo for 404 responses
+                if lyrics_text and not data.get("data", {}).get("respone"):
+                    lyrics_text = lyrics_text.replace("\r\n", "\n").replace("\r", "\n")
+                    print(f"[Lyrics API] Got lyrics: {len(lyrics_text)} chars, track={data['data'].get('trackName')}")
+                    return lyrics_text
+                else:
+                    print(f"[Lyrics API] No lyrics found for: {title} - {artist}")
+                    return None
+            else:
+                print(f"[Lyrics API] HTTP {response.status_code}")
+                return None
+
+        except Exception as e:
+            print(f"[Lyrics API] Failed: {e}")
+            return None
+
     def extract_lyrics(self, audio_path: str, song_id: str, language: Optional[str] = None, 
                        folder_name: Optional[str] = None, 
                        title: Optional[str] = None,
@@ -227,11 +264,17 @@ class WhisperProcessor:
         if progress_callback:
             progress_callback(70)
 
+        api_lyrics_text = self._fetch_lyrics_from_api(title, artist)
+        print(f"[Lyrics] Source: {'YouTube API' if api_lyrics_text else 'WhisperX transcription'}")
+
         print("=" * 60)
         print("[Stage 3: MFA] Phoneme-level refinement...")
         print("=" * 60)
         
-        lyrics_lines = self._refine_with_mfa(audio_path, lyrics_lines, detected_language)
+        if api_lyrics_text:
+            lyrics_lines = self._refine_with_mfa(audio_path, lyrics_lines, detected_language, override_text=api_lyrics_text)
+        else:
+            lyrics_lines = self._refine_with_mfa(audio_path, lyrics_lines, detected_language)
         
         print("=" * 60)
         print("[Stage 4: Energy] Analyzing vocal intensity...")
@@ -248,6 +291,32 @@ class WhisperProcessor:
                 for word in segment.get("words", []):
                     word["energy"] = 0.5
         
+        print("=" * 60)
+        print("[Stage 5: Pitch] Analyzing vocal melody...")
+        print("=" * 60)
+
+        if os.path.exists(vocals_path):
+            lyrics_lines = self._add_pitch_to_words(vocals_path, lyrics_lines)
+        else:
+            print(f"[Pitch] Vocals file not found at {vocals_path}, skipping pitch analysis")
+            for segment in lyrics_lines:
+                for word in segment.get("words", []):
+                    word["pitch"] = 0
+                    word["note"] = ""
+                    word["midi"] = 0
+
+        print("=" * 60)
+        print("[Stage 6: VAD] Detecting voice activity...")
+        print("=" * 60)
+
+        if os.path.exists(vocals_path):
+            lyrics_lines = self._add_vad_to_words(vocals_path, lyrics_lines)
+        else:
+            print(f"[VAD] Vocals file not found at {vocals_path}, skipping VAD")
+            for segment in lyrics_lines:
+                for word in segment.get("words", []):
+                    word["voiced"] = 0.0
+
         if progress_callback:
             progress_callback(90)
         
@@ -479,7 +548,7 @@ class WhisperProcessor:
         
         return cleaned
 
-    def _refine_with_mfa(self, audio_path: str, segments: List[Dict], language: str) -> List[Dict]:
+    def _refine_with_mfa(self, audio_path: str, segments: List[Dict], language: str, override_text: Optional[str] = None) -> List[Dict]:
         if not mfa_processor.is_available():
             print("[MFA] Not available, using WhisperX timings")
             return segments
@@ -489,7 +558,10 @@ class WhisperProcessor:
             return segments
         
         try:
-            full_text = " ".join([seg["text"] for seg in segments])
+            if override_text:
+                full_text = override_text
+            else:
+                full_text = " ".join([seg["text"] for seg in segments])
             if not full_text.strip():
                 return segments
             
@@ -611,6 +683,165 @@ class WhisperProcessor:
             for segment in segments:
                 for word in segment.get("words", []):
                     word["energy"] = 0.5
+            return segments
+
+    def _add_pitch_to_words(self, vocals_path: str, segments: List[Dict]) -> List[Dict]:
+        """Add pitch data (frequency, note, midi) to each word based on vocal analysis"""
+        try:
+            print(f"[Pitch] Loading vocals from {vocals_path}...")
+            audio, sr = librosa.load(vocals_path, sr=16000, mono=True)
+            
+            # Process in chunks to avoid CUDA OOM (30 seconds each)
+            chunk_duration = 30
+            chunk_samples = chunk_duration * sr
+            
+            all_pitch = []
+            all_periodicity = []
+            
+            for start in range(0, len(audio), chunk_samples):
+                chunk = audio[start:start + chunk_samples]
+                audio_tensor = torch.tensor(chunk).unsqueeze(0).to(self.device)
+                
+                pitch_chunk, periodicity_chunk = torchcrepe.predict(
+                    audio_tensor,
+                    sr,
+                    hop_length=160,     # 10ms resolution
+                    fmin=50,
+                    fmax=2000,
+                    model='full',
+                    device=self.device,
+                    return_periodicity=True,
+                )
+                
+                all_pitch.append(pitch_chunk.squeeze().cpu().numpy())
+                all_periodicity.append(periodicity_chunk.squeeze().cpu().numpy())
+                
+                del audio_tensor, pitch_chunk, periodicity_chunk
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            
+            pitch = np.concatenate(all_pitch)
+            periodicity = np.concatenate(all_periodicity)
+            time = np.arange(len(pitch)) * 160 / sr  # 10ms per frame
+            
+            # Helper functions (same as crepe_processor.py)
+            def freq_to_midi(freq):
+                if freq <= 0 or np.isnan(freq):
+                    return 0
+                return int(round(69 + 12 * np.log2(freq / 440.0)))
+            
+            def freq_to_note(freq):
+                if freq <= 0 or np.isnan(freq):
+                    return ""
+                notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+                midi = freq_to_midi(freq)
+                return f"{notes[midi % 12]}{(midi // 12) - 1}"
+            
+            total_words = 0
+            pitch_added = 0
+            
+            for segment in segments:
+                for word in segment.get("words", []):
+                    total_words += 1
+                    start_time = word.get("start_time", 0)
+                    end_time = word.get("end_time", 0)
+                    
+                    start_idx = np.searchsorted(time, start_time)
+                    end_idx = np.searchsorted(time, end_time)
+                    
+                    if start_idx < end_idx and end_idx <= len(pitch):
+                        # Only consider frames with good periodicity (voice detected)
+                        mask = periodicity[start_idx:end_idx] > 0.5
+                        valid_freqs = pitch[start_idx:end_idx][mask]
+                        
+                        if len(valid_freqs) > 0 and not np.all(np.isnan(valid_freqs)):
+                            avg_freq = float(np.nanmean(valid_freqs))
+                            word["pitch"] = round(avg_freq, 2)
+                            word["note"] = freq_to_note(avg_freq)
+                            word["midi"] = freq_to_midi(avg_freq)
+                            pitch_added += 1
+                            continue
+                    
+                    # Default values for words where pitch can't be determined
+                    word["pitch"] = 0
+                    word["note"] = ""
+                    word["midi"] = 0
+            
+            print(f"[Pitch] Added pitch values to {pitch_added}/{total_words} words")
+            return segments
+            
+        except Exception as e:
+            print(f"[Pitch] Failed to calculate pitch: {e}")
+            for segment in segments:
+                for word in segment.get("words", []):
+                    word["pitch"] = 0
+                    word["note"] = ""
+                    word["midi"] = 0
+            return segments
+
+    def _add_vad_to_words(self, vocals_path: str, segments: List[Dict]) -> List[Dict]:
+        """Add voice activity detection confidence (0.0-1.0) to each word"""
+        try:
+            print(f"[VAD] Loading vocals from {vocals_path}...")
+            y, sr = librosa.load(vocals_path, sr=16000)
+
+            # Compute RMS energy with fine resolution
+            rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
+            times = librosa.times_like(rms, sr=sr, hop_length=512)
+
+            # Compute spectral flatness (voice has lower flatness than noise)
+            flatness = librosa.feature.spectral_flatness(y=y, n_fft=2048, hop_length=512)[0]
+
+            # Dynamic threshold: percentile-based to adapt to different tracks
+            rms_threshold = np.percentile(rms, 30)  # bottom 30% = silence
+
+            # Normalize RMS to 0-1 range
+            rms_min = rms.min()
+            rms_max = rms.max()
+            rms_range = rms_max - rms_min + 1e-8
+            rms_normalized = (rms - rms_min) / rms_range
+
+            total_words = 0
+            vad_added = 0
+
+            for segment in segments:
+                for word in segment.get("words", []):
+                    total_words += 1
+                    start_time = word.get("start_time", 0)
+                    end_time = word.get("end_time", 0)
+
+                    start_idx = np.searchsorted(times, start_time)
+                    end_idx = np.searchsorted(times, end_time)
+
+                    if start_idx < end_idx and end_idx <= len(rms):
+                        # Voice activity = high energy AND low spectral flatness
+                        word_rms = rms_normalized[start_idx:end_idx]
+                        word_flatness = flatness[start_idx:end_idx]
+
+                        # Energy component: how loud relative to track
+                        energy_score = float(np.mean(word_rms))
+
+                        # Flatness component: voice has structure (low flatness)
+                        # Invert: 1.0 = very structured (voice), 0.0 = noise-like
+                        voice_score = float(1.0 - np.mean(word_flatness))
+
+                        # Combined voiced confidence
+                        voiced = round(energy_score * 0.6 + voice_score * 0.4, 3)
+                        voiced = max(0.0, min(1.0, voiced))  # clamp
+
+                        word["voiced"] = voiced
+                        vad_added += 1
+                    else:
+                        word["voiced"] = 0.0
+
+            print(f"[VAD] Added voice activity to {vad_added}/{total_words} words")
+            return segments
+
+        except Exception as e:
+            print(f"[VAD] Failed: {e}")
+            for segment in segments:
+                for word in segment.get("words", []):
+                    word["voiced"] = 0.0
             return segments
 
 

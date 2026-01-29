@@ -7,6 +7,10 @@ interface LyricsWord {
   startTime: number;
   endTime: number;
   text: string;
+  pitch?: number;    // Average frequency in Hz (e.g., 440.0)
+  note?: string;     // Musical note name (e.g., "A4", "C#5")
+  midi?: number;     // MIDI note number (e.g., 69)
+  voiced?: number;   // Voice activity confidence 0.0-1.0
 }
 
 interface LyricsLine {
