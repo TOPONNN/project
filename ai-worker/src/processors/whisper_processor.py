@@ -137,27 +137,30 @@ class LyricsProcessor:
                         break
 
                 if not matched:
-                    # Can't find timing - use interpolated timing or skip
-                    # Use last known time + small offset
+                    # Can't find timing - use interpolated timing
+                    # Always base on line_words first to avoid timing reversal
                     if line_words:
                         last_end = line_words[-1]["end_time"]
-                        line_words.append({
-                            "start_time": round(last_end, 3),
-                            "end_time": round(last_end + 0.3, 3),
-                            "text": word_text,
-                        })
                     elif result_lines:
-                        last_end = result_lines[-1]["end_time"]
-                        line_words.append({
-                            "start_time": round(last_end + 0.1, 3),
-                            "end_time": round(last_end + 0.4, 3),
-                            "text": word_text,
-                        })
+                        last_end = result_lines[-1]["end_time"] + 0.1
+                    else:
+                        last_end = 0.0
+
+                    line_words.append({
+                        "start_time": round(last_end, 3),
+                        "end_time": round(last_end + 0.3, 3),
+                        "text": word_text,
+                    })
 
             if line_words:
+                line_start = line_words[0]["start_time"]
+                line_end = line_words[-1]["end_time"]
+                # Safety: ensure end >= start (prevents timing reversal)
+                if line_end < line_start:
+                    line_end = line_words[-1]["start_time"] + 0.3
                 result_lines.append({
-                    "start_time": line_words[0]["start_time"],
-                    "end_time": line_words[-1]["end_time"],
+                    "start_time": line_start,
+                    "end_time": line_end,
                     "text": line_text,
                     "words": line_words,
                 })
@@ -539,14 +542,8 @@ class LyricsProcessor:
         print("[Stage 4: Energy] Analyzing vocal intensity...")
         print("=" * 60)
 
-        vocals_path = os.path.join(TEMP_DIR, song_id, "vocals.wav")
-        if os.path.exists(vocals_path):
-            lyrics_lines = self._add_energy_to_words(vocals_path, lyrics_lines)
-        else:
-            print(f"[Energy] Vocals not found at {vocals_path}, using defaults")
-            for seg in lyrics_lines:
-                for w in seg.get("words", []):
-                    w["energy"] = 0.5
+        # Use audio_path directly - worker passes the vocals file
+        lyrics_lines = self._add_energy_to_words(audio_path, lyrics_lines)
 
         # ========================================
         # Stage 5: Pitch analysis
@@ -555,14 +552,8 @@ class LyricsProcessor:
         print("[Stage 5: Pitch] Analyzing vocal melody...")
         print("=" * 60)
 
-        if os.path.exists(vocals_path):
-            lyrics_lines = self._add_pitch_to_words(vocals_path, lyrics_lines)
-        else:
-            for seg in lyrics_lines:
-                for w in seg.get("words", []):
-                    w["pitch"] = 0
-                    w["note"] = ""
-                    w["midi"] = 0
+        # Use audio_path directly - worker passes the vocals file
+        lyrics_lines = self._add_pitch_to_words(audio_path, lyrics_lines)
 
         # ========================================
         # Stage 6: VAD analysis
@@ -571,12 +562,8 @@ class LyricsProcessor:
         print("[Stage 6: VAD] Detecting voice activity...")
         print("=" * 60)
 
-        if os.path.exists(vocals_path):
-            lyrics_lines = self._add_vad_to_words(vocals_path, lyrics_lines)
-        else:
-            for seg in lyrics_lines:
-                for w in seg.get("words", []):
-                    w["voiced"] = 0.0
+        # Use audio_path directly - worker passes the vocals file
+        lyrics_lines = self._add_vad_to_words(audio_path, lyrics_lines)
 
         if progress_callback:
             progress_callback(90)
