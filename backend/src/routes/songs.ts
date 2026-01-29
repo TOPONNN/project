@@ -85,16 +85,17 @@ router.post("/:id/processing-callback", async (req: Request, res: Response) => {
       startTime: line.start_time ?? line.startTime,
       endTime: line.end_time ?? line.endTime,
       text: line.text,
-       words: line.words?.map((w: any) => ({
-         startTime: w.start_time ?? w.startTime,
-         endTime: w.end_time ?? w.endTime,
-         text: w.text,
-         energy: w.energy,
-         pitch: w.pitch,
-         note: w.note,
-         midi: w.midi,
-         voiced: w.voiced,
-       })),
+        words: line.words?.map((w: any) => ({
+          startTime: w.start_time ?? w.startTime,
+          endTime: w.end_time ?? w.endTime,
+          text: w.text,
+          energy: w.energy,
+          pitch: w.pitch,
+          note: w.note,
+          midi: w.midi,
+          voiced: w.voiced,
+          energyCurve: w.energy_curve ?? w.energyCurve,
+        })),
     }));
 
     await songService.updateProcessingResult(id, {

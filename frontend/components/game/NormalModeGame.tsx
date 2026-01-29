@@ -16,6 +16,7 @@ interface LyricsWord {
   note?: string;     // Musical note name (e.g., "A4", "C#5")
   midi?: number;     // MIDI note number (e.g., 69)
   voiced?: number;   // Voice activity confidence 0.0-1.0
+  energyCurve?: number[];  // NEW: 4-8 values representing energy contour within word
 }
 
 interface LyricsLine {
@@ -27,7 +28,7 @@ interface LyricsLine {
 
 // 노래방 싱크 설정 상수
 const SYNC_CONFIG = {
-  WORD_LEAD_TIME: 0.08,        // 단어 하이라이트가 미리 시작하는 시간 (초)
+  WORD_LEAD_TIME: 0.10,        // 단어 하이라이트가 미리 시작하는 시간 (초)
   NEXT_LINE_PREVIEW: 0.5,      // 다음 가사 미리보기 시간 (초)
   LINE_HOLD_AFTER_END: 0.5,    // 가사가 끝난 후 유지 시간 (초)
 };
@@ -378,14 +379,44 @@ export default function NormalModeGame() {
     if (localTime < wordStart) return 0;
     if (localTime >= wordEnd) return 100;
     
-    const linearProgress = ((localTime - wordStart) / wordDuration) * 100;
+    // Raw linear progress 0-1
+    const t = (localTime - wordStart) / wordDuration;
     
-    // Energy-based easing: words with higher energy fill faster at the start
+    // Energy affects fill speed: high energy = faster start, low = slower
     const energy = word.energy ?? 0.5;
-    const exponent = 1 / (0.8 + energy * 0.4);
-    const easedProgress = Math.pow(linearProgress / 100, exponent) * 100;
+    const voiced = word.voiced ?? 1.0;
     
-    return Math.min(100, Math.max(0, easedProgress));
+    // Use energy curve if available for intra-word modulation
+    let effectiveEnergy = energy;
+    const curve = word.energyCurve || (word as any).energy_curve;
+    if (curve && curve.length > 1) {
+      // Sample the energy curve at current position within the word
+      const curveIndex = Math.min(
+        curve.length - 1,
+        Math.floor(t * curve.length)
+      );
+      effectiveEnergy = curve[curveIndex];
+    }
+    
+    // Sigmoid-based fill: strong vocals push fill ahead, weak vocals lag behind
+    // k controls steepness: higher energy = steeper sigmoid = faster middle fill
+    const k = 4 + effectiveEnergy * 8; // Range: 4 (soft) to 12 (strong)
+    const sigmoid = 1 / (1 + Math.exp(-k * (t - 0.5)));
+    // Normalize sigmoid to 0-1 range
+    const sigMin = 1 / (1 + Math.exp(-k * -0.5));
+    const sigMax = 1 / (1 + Math.exp(-k * 0.5));
+    const normalizedSigmoid = (sigmoid - sigMin) / (sigMax - sigMin);
+    
+    // Voiced modulation: unvoiced sections slow down the fill
+    const voicedFactor = 0.3 + voiced * 0.7; // Range: 0.3 to 1.0
+    
+    // Blend: sigmoid curve modulated by voiced factor
+    const progress = normalizedSigmoid * voicedFactor * 100;
+    
+    // If voiced is very low, cap progress to prevent it from reaching 100% too early
+    const maxProgress = voiced < 0.3 ? 70 : 100;
+    
+    return Math.min(maxProgress, Math.max(0, progress));
   }, [localTime]);
 
   // 라인 전체 진행률 (단어가 없을 때 사용)
@@ -594,7 +625,7 @@ export default function NormalModeGame() {
                          return (
                             <span key={i} className="relative block text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-black">
                                <span className="text-white relative z-10" style={{ WebkitTextStroke: '2px rgba(0,0,0,0.8)', paintOrder: 'stroke fill' }}>{word.text}</span>
-                               <span className="absolute left-0 top-0 text-cyan-400 overflow-hidden whitespace-nowrap z-20" style={{ width: `${progress}%`, WebkitTextStroke: '2px rgba(0,0,0,0.8)', paintOrder: 'stroke fill' }}>{word.text}</span>
+                               <span className="absolute left-0 top-0 text-cyan-400 overflow-hidden whitespace-nowrap z-20" style={{ width: `${progress}%`, transition: 'width 0.05s linear', WebkitTextStroke: '2px rgba(0,0,0,0.8)', paintOrder: 'stroke fill' }}>{word.text}</span>
                             </span>
                          );
                        });
@@ -602,7 +633,7 @@ export default function NormalModeGame() {
                         return (
                           <div className="relative text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-black">
                              <span className="text-white" style={{ WebkitTextStroke: '2px rgba(0,0,0,0.8)', paintOrder: 'stroke fill' }}>{line.text}</span>
-                             <span className="absolute left-0 top-0 text-cyan-400 overflow-hidden whitespace-nowrap" style={{ width: `${getLineProgress(line)}%`, WebkitTextStroke: '2px rgba(0,0,0,0.8)', paintOrder: 'stroke fill' }}>{line.text}</span>
+                             <span className="absolute left-0 top-0 text-cyan-400 overflow-hidden whitespace-nowrap" style={{ width: `${getLineProgress(line)}%`, transition: 'width 0.05s linear', WebkitTextStroke: '2px rgba(0,0,0,0.8)', paintOrder: 'stroke fill' }}>{line.text}</span>
                          </div>
                         );
                      }
