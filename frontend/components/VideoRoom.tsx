@@ -110,23 +110,25 @@ function RoomContent({ hideControls, onStatusChange }: { hideControls: boolean; 
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCamOn, setIsCamOn] = useState(true);
 
-  const toggleMicrophone = useCallback(async () => {
-    if (localParticipant) {
-      const newState = !isMicOn;
-      await localParticipant.setMicrophoneEnabled(newState);
-      setIsMicOn(newState);
-      onStatusChange?.({ isCameraOn: isCamOn, isMicOn: newState });
-    }
-  }, [localParticipant, isMicOn, isCamOn, onStatusChange]);
+   const toggleMicrophone = useCallback(async () => {
+     if (localParticipant) {
+       const newState = !isMicOn;
+       await localParticipant.setMicrophoneEnabled(newState);
+       setIsMicOn(newState);
+       window.dispatchEvent(new CustomEvent("kero:micStatus", { detail: { isMicOn: newState } }));
+       onStatusChange?.({ isCameraOn: isCamOn, isMicOn: newState });
+     }
+   }, [localParticipant, isMicOn, isCamOn, onStatusChange]);
 
-  const toggleCamera = useCallback(async () => {
-    if (localParticipant) {
-      const newState = !isCamOn;
-      await localParticipant.setCameraEnabled(newState);
-      setIsCamOn(newState);
-      onStatusChange?.({ isCameraOn: newState, isMicOn });
-    }
-  }, [localParticipant, isCamOn, isMicOn, onStatusChange]);
+   const toggleCamera = useCallback(async () => {
+     if (localParticipant) {
+       const newState = !isCamOn;
+       await localParticipant.setCameraEnabled(newState);
+       setIsCamOn(newState);
+       window.dispatchEvent(new CustomEvent("kero:camStatus", { detail: { isCamOn: newState } }));
+       onStatusChange?.({ isCameraOn: newState, isMicOn });
+     }
+   }, [localParticipant, isCamOn, isMicOn, onStatusChange]);
 
   useEffect(() => {
     onStatusChange?.({ isCameraOn: isCamOn, isMicOn });
