@@ -32,6 +32,8 @@ const SYNC_CONFIG = {
   LINE_HOLD_AFTER_END: 0.5,    // 가사가 끝난 후 유지 시간 (초)
 };
 
+type GamePhase = 'intro' | 'countdown' | 'singing';
+
 export default function NormalModeGame() {
   const dispatch = useDispatch();
   const { currentSong, status, songQueue } = useSelector((state: RootState) => state.game);
@@ -55,6 +57,29 @@ export default function NormalModeGame() {
   const lastTimeRef = useRef<number>(0);
   
   const duration = audioDuration || currentSong?.duration || 0;
+
+  // Derived Game Phase Logic
+  const { gamePhase, countdownNumber } = useMemo(() => {
+    if (!currentSong || lyrics.length === 0) {
+      return { gamePhase: 'intro' as GamePhase, countdownNumber: 3 };
+    }
+    
+    const firstLyricTime = lyrics[0].startTime;
+    
+    // Intro: From time 0 until 3 seconds before lyrics[0].startTime
+    if (localTime < firstLyricTime - 3) {
+      return { gamePhase: 'intro' as GamePhase, countdownNumber: 3 };
+    }
+    
+    // Countdown: From 3 seconds before lyrics[0].startTime until lyrics[0].startTime
+    if (localTime < firstLyricTime) {
+      const count = Math.ceil(firstLyricTime - localTime);
+      return { gamePhase: 'countdown' as GamePhase, countdownNumber: count > 0 ? count : 1 };
+    }
+    
+    // Singing: From lyrics[0].startTime onwards
+    return { gamePhase: 'singing' as GamePhase, countdownNumber: 0 };
+  }, [localTime, lyrics, currentSong]);
 
   const findCurrentLyricIndex = useCallback((time: number): number => {
     if (lyrics.length === 0) return -1;
@@ -227,6 +252,7 @@ export default function NormalModeGame() {
     audioRef.current.currentTime = 0;
     setLocalTime(0);
     setCurrentLyricIndex(-1);
+    // Phase will auto-update via derived state
   }, []);
 
   const handleMicToggle = () => {
@@ -280,6 +306,44 @@ export default function NormalModeGame() {
     return ((localTime - adjustedStart) / (line.endTime - adjustedStart)) * 100;
   }, [localTime]);
 
+  const youtubeEmbedUrl = useMemo(() => {
+    if (!videoId) return null;
+    return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=${videoId}&modestbranding=1&enablejsapi=1`;
+  }, [videoId]);
+
+  // Interlude Logic
+  const interludeData = useMemo(() => {
+    if (currentLyricIndex !== -1) return null;
+    if (lyrics.length === 0) return null;
+    if (gamePhase !== 'singing') return null;
+
+    const nextLineIndex = lyrics.findIndex(l => l.startTime > localTime);
+    if (nextLineIndex === -1) return null;
+
+    const nextLine = lyrics[nextLineIndex];
+    const prevLine = lyrics[nextLineIndex - 1];
+    
+    if (!prevLine) return null; 
+
+    const gap = nextLine.startTime - prevLine.endTime;
+    if (gap > 5) {
+      const timeToNext = nextLine.startTime - localTime;
+      return { isInterlude: true, timeToNext };
+    }
+    return null;
+  }, [currentLyricIndex, lyrics, localTime, gamePhase]);
+
+  const currentLine = currentLyricIndex >= 0 ? lyrics[currentLyricIndex] : undefined;
+  
+  const nextLine = useMemo(() => {
+    if (currentLyricIndex >= 0) {
+      return lyrics[currentLyricIndex + 1] || null;
+    }
+    // During rest/interlude
+    return lyrics.find(line => line.startTime > localTime) || null;
+  }, [currentLyricIndex, lyrics, localTime]);
+
+
   if (!currentSong) {
     return (
       <div className="flex flex-col items-center justify-center h-full">
@@ -289,247 +353,276 @@ export default function NormalModeGame() {
     );
   }
 
-  const youtubeEmbedUrl = useMemo(() => {
-    if (!videoId) return null;
-    return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=${videoId}&modestbranding=1&enablejsapi=1`;
-  }, [videoId]);
-
-  const currentLine = currentLyricIndex >= 0 ? lyrics[currentLyricIndex] : undefined;
-  const nextLine = useMemo(() => {
-    if (currentLyricIndex >= 0) {
-      return lyrics[currentLyricIndex + 1] || null;
-    }
-    // During rest: find the actual next upcoming line
-    return lyrics.find(line => line.startTime > localTime) || null;
-  }, [currentLyricIndex, lyrics, localTime]);
-
   return (
-    <div className="relative w-full h-full bg-black overflow-hidden select-none">
-      {audioUrl && (
-        <audio
-          ref={audioRef}
-          src={audioUrl}
-          muted={isMuted}
-          crossOrigin="anonymous"
-        />
-      )}
-
-      <div className="absolute inset-0 z-0 bg-black">
-        {youtubeEmbedUrl ? (
-          <div className="relative w-full h-full">
-             <iframe
-              src={youtubeEmbedUrl}
-              className="absolute top-1/2 left-1/2 w-[150%] h-[150%] -translate-x-1/2 -translate-y-1/2 object-cover opacity-60 pointer-events-none"
-              allow="autoplay; encrypted-media"
-            />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/90" />
-          </div>
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-900">
-            <Music2 className="w-32 h-32 text-white/10" />
-          </div>
+    <div className="relative w-full h-full bg-black overflow-hidden select-none font-sans">
+        {/* Audio Element */}
+        {audioUrl && (
+          <audio
+            ref={audioRef}
+            src={audioUrl}
+            muted={isMuted}
+            crossOrigin="anonymous"
+          />
         )}
-      </div>
 
-      <div className="absolute top-0 left-0 right-0 z-20 flex flex-col items-center pt-20 pb-6 bg-gradient-to-b from-black/80 to-transparent">
-        <h1 className="text-3xl font-bold text-white drop-shadow-lg tracking-tight text-center">
-          {currentSong.title}
-        </h1>
-        <p className="text-xl text-white/80 font-medium drop-shadow-md mt-1 text-center">
-          {currentSong.artist}
-        </p>
-        
-        {songQueue.length > 0 && (
-          <div className="mt-3 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-white/10">
-            <span className="text-white/80 text-sm font-medium">
-              예약곡 <span className="text-blue-400 font-bold">{songQueue.length}</span>
-            </span>
-          </div>
-        )}
-      </div>
-
-      {audioError && (
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-30 p-4 bg-red-500/80 backdrop-blur-md text-white rounded-xl shadow-xl flex items-center gap-3">
-          <AlertCircle className="w-5 h-5" />
-          <span>{audioError}</span>
-        </div>
-      )}
-
-      <div className="absolute bottom-[140px] left-0 right-0 z-20 px-4 md:px-12 text-center flex flex-col items-center justify-end min-h-[220px]">
-        {/* 현재 가사 */}
-        <div className="mb-4 w-full max-w-5xl">
-          <AnimatePresence mode="wait">
-            {currentLine ? (
-              <motion.div
-                key={`line-${currentLyricIndex}`}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.2, ease: "easeOut" }}
-                className="relative"
-              >
-                <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 leading-relaxed">
-                  {currentLine.words && currentLine.words.length > 0 ? (
-                    currentLine.words.map((word, i) => {
-                      const progress = getWordProgressInLine(currentLine, i);
-                      
-                      return (
-                        <span 
-                          key={`${currentLyricIndex}-${i}`} 
-                          className="relative text-4xl md:text-5xl lg:text-6xl font-black"
-                        >
-                          <span className="text-white/70">{word.text}</span>
-                          <span 
-                            className="absolute left-0 top-0 text-cyan-400 overflow-hidden whitespace-nowrap"
-                            style={{ width: `${progress}%` }}
-                          >
-                            {word.text}
-                          </span>
-                        </span>
-                      );
-                    })
-                  ) : (
-                    <span className="relative text-4xl md:text-5xl lg:text-6xl font-black">
-                      <span className="text-white/70">{currentLine.text}</span>
-                      <span 
-                        className="absolute left-0 top-0 text-cyan-400 overflow-hidden whitespace-nowrap"
-                        style={{ width: `${getLineProgress(currentLine)}%` }}
-                      >
-                        {currentLine.text}
-                      </span>
-                    </span>
-                  )}
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="flex justify-center gap-2"
-              >
-                <span className="w-3 h-3 bg-white/30 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-3 h-3 bg-white/30 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-3 h-3 bg-white/30 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* 다음 가사 미리보기 */}
-        <div className="h-14 w-full max-w-4xl flex items-center justify-center">
-          <AnimatePresence mode="wait">
-            {nextLine && (
-              <motion.p 
-                key={`next-${currentLyricIndex + 1}`}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 0.6, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                className="text-xl md:text-2xl text-gray-300 font-semibold tracking-wide line-clamp-1 drop-shadow-lg"
-              >
-                {nextLine.text}
-              </motion.p>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
-
-      <div className="absolute bottom-0 left-0 right-0 z-30 px-6 py-6 pb-8 bg-gradient-to-t from-black via-black/80 to-transparent">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center gap-4 mb-4">
-            <span className="text-xs text-gray-400 font-mono w-10 text-right">{formatTime(localTime)}</span>
-            <div
-              className="flex-1 h-1.5 bg-white/20 rounded-full cursor-pointer group hover:h-2 transition-all"
-              onClick={handleSeek}
-            >
-              <div
-                className="h-full bg-blue-500 rounded-full relative"
-                style={{ width: `${progress}%` }}
-              >
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity scale-0 group-hover:scale-100" />
-              </div>
+        {/* Background (YouTube or Gradient) */}
+        <div className="absolute inset-0 z-0 bg-black">
+          {youtubeEmbedUrl ? (
+            <div className="relative w-full h-full">
+                <iframe
+                src={youtubeEmbedUrl}
+                className="absolute top-1/2 left-1/2 w-[150%] h-[150%] -translate-x-1/2 -translate-y-1/2 object-cover opacity-40 pointer-events-none"
+                allow="autoplay; encrypted-media"
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/90" />
             </div>
-            <span className="text-xs text-gray-400 font-mono w-10">{formatTime(duration)}</span>
-          </div>
-
-          <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {/* Volume */}
-                <div className="flex items-center gap-2 group">
-                  <button
-                    onClick={() => setIsMuted(!isMuted)}
-                    className="p-2 text-gray-400 hover:text-white transition-colors"
-                  >
-                    {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-                  </button>
-                  <div className="w-0 overflow-hidden group-hover:w-24 transition-all duration-300">
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={volume}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        setVolume(v);
-                        if (audioRef.current) audioRef.current.volume = v;
-                      }}
-                      className="w-20 h-1 accent-blue-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Divider */}
-                <div className="w-px h-6 bg-white/20" />
-
-                {/* LiveKit Controls */}
-                <button
-                  onClick={handleMicToggle}
-                  className={`p-2 rounded-full transition-all ${
-                    isMicOn 
-                    ? "text-white/60 hover:text-white" 
-                    : "bg-red-500/80 text-white"
-                  }`}
-                >
-                  {isMicOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-                </button>
-                <button
-                  onClick={handleCameraToggle}
-                  className={`p-2 rounded-full transition-all ${
-                    isCamOn 
-                    ? "text-white/60 hover:text-white" 
-                    : "bg-red-500/80 text-white"
-                  }`}
-                >
-                  {isCamOn ? <Video className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
-                </button>
-              </div>
-
-              <div className="flex items-center gap-6">
-                <button
-                  onClick={handleRestart}
-                  className="p-2 text-white/60 hover:text-white transition-colors hover:rotate-[-30deg]"
-                >
-                  <RotateCcw className="w-6 h-6" />
-                </button>
-                
-                <button
-                  onClick={togglePlay}
-                  disabled={!audioLoaded}
-                  className="w-14 h-14 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg shadow-white/10 disabled:opacity-50 disabled:scale-100"
-                >
-                  {isPlaying ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-1" />}
-                </button>
-                
-                <button className="p-2 text-white/60 hover:text-white transition-colors">
-                  <SkipForward className="w-6 h-6" />
-                </button>
-              </div>
-
-            <div className="w-[140px] hidden md:block" /> 
-          </div>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gray-900">
+              <Music2 className="w-32 h-32 text-white/10" />
+            </div>
+          )}
         </div>
-      </div>
+
+        {/* MAIN CONTENT AREA */}
+        <div className="absolute inset-0 z-10 flex flex-col">
+            
+            {/* Top Bar (Song Info - Hidden during Intro) */}
+             <div className={`w-full p-6 flex justify-between items-start transition-all duration-500 ${gamePhase === 'singing' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
+                 <div className="flex flex-col">
+                     <h2 className="text-4xl font-bold text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] tracking-tight">
+                         {currentSong.title}
+                     </h2>
+                     <p className="text-xl text-white/80 font-medium mt-1">
+                         {currentSong.artist}
+                     </p>
+                 </div>
+                 {/* Reserved for score or other indicators */}
+             </div>
+
+            {/* CENTER STAGE */}
+            <div className="flex-1 flex flex-col items-center justify-center relative">
+                <AnimatePresence mode="wait">
+                    
+                    {/* PHASE: INTRO */}
+                    {gamePhase === 'intro' && (
+                        <motion.div 
+                            key="intro"
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 1.1, filter: "blur(10px)" }}
+                            transition={{ duration: 0.8 }}
+                            className="text-center flex flex-col items-center"
+                        >
+                             <div className="mb-6 text-cyan-400 text-xl font-bold tracking-[0.5em] border-b border-cyan-400/50 pb-2">
+                                TJ 노래방
+                             </div>
+                             <h1 className="text-5xl md:text-6xl font-bold text-white mb-6 drop-shadow-[0_0_15px_rgba(255,255,255,0.3)] max-w-4xl leading-tight">
+                                {currentSong.title}
+                             </h1>
+                             <p className="text-2xl text-white/70 font-medium">
+                                {currentSong.artist}
+                             </p>
+                             
+                             {songQueue.length > 0 && (
+                                <div className="mt-12 bg-white/10 backdrop-blur-md px-6 py-3 rounded-full border border-white/20">
+                                    <span className="text-white/90 text-lg">
+                                    다음 예약곡 <span className="text-cyan-400 font-bold ml-2">{songQueue.length}</span> 곡
+                                    </span>
+                                </div>
+                            )}
+                        </motion.div>
+                    )}
+
+                    {/* PHASE: COUNTDOWN */}
+                    {gamePhase === 'countdown' && (
+                        <motion.div
+                            key="countdown"
+                            className="flex flex-col items-center justify-center"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                        >
+                            <AnimatePresence mode="popLayout">
+                                <motion.div
+                                    key={countdownNumber}
+                                    initial={{ opacity: 0, scale: 1.5 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.5 }}
+                                    transition={{ duration: 0.4 }}
+                                    className="text-9xl font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.6)]"
+                                >
+                                    {countdownNumber}
+                                </motion.div>
+                            </AnimatePresence>
+                            <p className="text-xl text-white/60 mt-8 font-medium tracking-wider animate-pulse">
+                                ♪ 노래가 곧 시작됩니다
+                            </p>
+                        </motion.div>
+                    )}
+
+                    {/* PHASE: SINGING (Interlude Logic Included) */}
+                    {gamePhase === 'singing' && interludeData?.isInterlude && (
+                         <motion.div
+                            key="interlude"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="flex flex-col items-center"
+                         >
+                            <div className="text-3xl text-white/60 font-medium mb-8 tracking-[0.5em] drop-shadow-lg bg-black/30 px-8 py-2 rounded-full border border-white/10">
+                                ♪ ─ 간 주 ─ ♪
+                            </div>
+                            
+                            {/* Interlude Countdown (if < 3s left) */}
+                            {interludeData.timeToNext <= 3.0 && (
+                                 <motion.div
+                                    key={`count-${Math.ceil(interludeData.timeToNext)}`}
+                                    initial={{ opacity: 0, scale: 0.8 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="text-7xl font-black text-cyan-400 my-4"
+                                 >
+                                     {Math.ceil(interludeData.timeToNext)}
+                                 </motion.div>
+                            )}
+                         </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+
+            {/* LYRICS AREA (Fixed Bottom Position) */}
+            <div className="w-full px-4 pb-8 flex flex-col items-center justify-end min-h-[300px] bg-gradient-to-t from-black via-black/60 to-transparent pt-20">
+                 {/* Main Line */}
+                 <div className="mb-6 w-full max-w-6xl text-center min-h-[80px] flex items-center justify-center">
+                    <AnimatePresence mode="wait">
+                         {gamePhase === 'singing' && currentLine ? (
+                             <motion.div
+                                key={`line-${currentLyricIndex}`}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -20 }}
+                                transition={{ duration: 0.2 }}
+                                className="flex flex-wrap justify-center gap-x-4 gap-y-2 leading-tight"
+                             >
+                                 {currentLine.words && currentLine.words.length > 0 ? (
+                                    currentLine.words.map((word, i) => {
+                                      const p = getWordProgressInLine(currentLine, i);
+                                      return (
+                                        <span 
+                                          key={`${currentLyricIndex}-${i}`} 
+                                          className="relative text-5xl md:text-6xl lg:text-7xl font-black tracking-tight"
+                                        >
+                                          <span className="text-white/30">{word.text}</span>
+                                          <span 
+                                            className="absolute left-0 top-0 text-cyan-400 overflow-hidden whitespace-nowrap"
+                                            style={{ width: `${p}%` }}
+                                          >
+                                            {word.text}
+                                          </span>
+                                        </span>
+                                      );
+                                    })
+                                  ) : (
+                                    <span className="relative text-5xl md:text-6xl lg:text-7xl font-black tracking-tight">
+                                      <span className="text-white/30">{currentLine.text}</span>
+                                      <span 
+                                        className="absolute left-0 top-0 text-cyan-400 overflow-hidden whitespace-nowrap"
+                                        style={{ width: `${getLineProgress(currentLine)}%` }}
+                                      >
+                                        {currentLine.text}
+                                      </span>
+                                    </span>
+                                  )}
+                             </motion.div>
+                         ) : null}
+                    </AnimatePresence>
+                 </div>
+
+                 {/* Next Line Preview */}
+                 <div className="h-12 w-full max-w-4xl flex items-center justify-center mb-8">
+                    <AnimatePresence mode="wait">
+                        {gamePhase === 'singing' && nextLine && (
+                            <motion.p 
+                                key={`next-${nextLine.startTime}`}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 0.5 }}
+                                exit={{ opacity: 0 }}
+                                className="text-2xl md:text-3xl text-white font-semibold tracking-wide line-clamp-1 drop-shadow-md"
+                            >
+                                {nextLine.text}
+                            </motion.p>
+                        )}
+                    </AnimatePresence>
+                 </div>
+
+                 {/* CONTROLS & PROGRESS */}
+                 <div className="w-full max-w-6xl flex flex-col gap-2">
+                     {/* Minimal Progress Bar */}
+                     <div 
+                        className="w-full h-1 bg-white/20 rounded-full cursor-pointer overflow-hidden group hover:h-2 transition-all"
+                        onClick={handleSeek}
+                     >
+                        <div 
+                            className="h-full bg-cyan-400 relative"
+                            style={{ width: `${progress}%` }}
+                        />
+                     </div>
+
+                     {/* Control Bar */}
+                     <div className="flex items-center justify-between px-2 mt-2">
+                        
+                        {/* Left: Toggles */}
+                        <div className="flex items-center gap-4">
+                            <button onClick={() => setIsMuted(!isMuted)} className="text-white/70 hover:text-white transition-colors">
+                                {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                            </button>
+                             <button
+                                onClick={handleMicToggle}
+                                className={`transition-all ${isMicOn ? "text-white/70 hover:text-white" : "text-red-500"}`}
+                             >
+                                {isMicOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+                             </button>
+                             <button
+                                onClick={handleCameraToggle}
+                                className={`transition-all ${isCamOn ? "text-white/70 hover:text-white" : "text-red-500"}`}
+                             >
+                                {isCamOn ? <Video className="w-5 h-5" /> : <CameraOff className="w-5 h-5" />}
+                             </button>
+                        </div>
+
+                        {/* Center: Play/Pause */}
+                        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-6">
+                            <button onClick={handleRestart} className="text-white/50 hover:text-white transition-colors">
+                                <RotateCcw className="w-5 h-5" />
+                            </button>
+                            <button 
+                                onClick={togglePlay}
+                                className="w-10 h-10 rounded-full bg-white/10 border border-white/20 flex items-center justify-center hover:bg-white/20 transition-all text-white"
+                            >
+                                {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
+                            </button>
+                             <button className="text-white/50 hover:text-white transition-colors">
+                                <SkipForward className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Right: Time */}
+                        <div className="text-sm font-mono text-white/50">
+                            {formatTime(localTime)} / {formatTime(duration)}
+                        </div>
+
+                     </div>
+                 </div>
+            </div>
+
+            {/* Error Toast */}
+            {audioError && (
+                <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 p-4 bg-red-500/90 text-white rounded-xl shadow-xl flex items-center gap-3">
+                <AlertCircle className="w-5 h-5" />
+                <span>{audioError}</span>
+                </div>
+            )}
+        </div>
     </div>
   );
 }
