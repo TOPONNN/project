@@ -21,10 +21,6 @@ interface SearchResult {
 type Country = "KOR" | "JPN" | "ENG" | "ALL";
 type ChartPeriod = "daily" | "weekly" | "monthly";
 
-const KOREAN_PATTERN = /[가-힣]/;
-const JAPANESE_KANA_PATTERN = /[\u3040-\u309F\u30A0-\u30FF]/;
-const CJK_KANJI_PATTERN = /[\u4E00-\u9FFF]/;
-
 const CACHE_TTL: Record<ChartPeriod, number> = {
   daily: 3600,      // 1 hour
   weekly: 21600,    // 6 hours
@@ -32,8 +28,9 @@ const CACHE_TTL: Record<ChartPeriod, number> = {
 };
 
 export class TJKaraokeService {
-  private readonly baseUrl = "https://api.manana.kr/karaoke";
   private readonly tjMediaApiUrl = "https://www.tjmedia.com/legacy/api/topAndHot100";
+  private readonly tjSearchUrl = "https://www.tjmedia.com/song/accompaniment_search";
+  private readonly userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
   // Map our Country type to TJ Media strType codes
   private readonly STRTYPE_MAP: Record<Country, string> = {
@@ -43,17 +40,44 @@ export class TJKaraokeService {
     JPN: "3",   // JPOP
   };
 
-  private detectCountry(song: TJSong): Country {
-    const text = `${song.title} ${song.artist}`;
-    if (KOREAN_PATTERN.test(text)) return "KOR";
-    if (JAPANESE_KANA_PATTERN.test(text)) return "JPN";
-    if (CJK_KANJI_PATTERN.test(text)) return "JPN";
-    return "ENG";
+  private stripHtml(html: string): string {
+    return html.replace(/<[^>]+>/g, "").trim();
   }
 
-  private filterByCountry(songs: TJSong[], country: Country): TJSong[] {
-    if (country === "ALL") return songs;
-    return songs.filter(song => this.detectCountry(song) === country);
+  private parseTJSearchHTML(html: string): TJSong[] {
+    const songs: TJSong[] = [];
+
+    // Split HTML by each song entry using the num2 marker.
+    // The outer <ul class="grid-container list ico"> contains a nested <ul> for icons,
+    // so a simple /<ul>...<\/ul>/ regex breaks on the inner </ul>. Splitting by num2 avoids this.
+    const songSections = html.split(/<span\s+class="num2">/);
+
+    for (let i = 1; i < songSections.length; i++) {
+      const section = songSections[i];
+
+      const numEndIdx = section.indexOf("</span>");
+      const rawNum = numEndIdx >= 0 ? section.substring(0, numEndIdx) : "";
+      const number = this.stripHtml(rawNum);
+
+      // Title is in the <p> after the icon <ul>...</ul> block inside title3
+      const titleMatch = section.match(/<\/ul>\s*<p[^>]*><span>([\s\S]*?)<\/span><\/p>/);
+      const title = titleMatch ? this.stripHtml(titleMatch[1]) : "";
+
+      const artistMatch = section.match(/<li\s+class="grid-item title4 singer"><p><span>([\s\S]*?)<\/span><\/p><\/li>/);
+      const artist = artistMatch ? this.stripHtml(artistMatch[1]) : "";
+
+      const composerMatch = section.match(/<li\s+class="grid-item title5"><p><span[^>]*>([\s\S]*?)<\/span><\/p><\/li>/);
+      const composer = composerMatch ? this.stripHtml(composerMatch[1]) : "";
+
+      const lyricistMatch = section.match(/<li\s+class="grid-item title6"><p><span[^>]*>([\s\S]*?)<\/span><\/p><\/li>/);
+      const lyricist = lyricistMatch ? this.stripHtml(lyricistMatch[1]) : "";
+
+      if (number && title) {
+        songs.push({ number, title, artist, composer, lyricist });
+      }
+    }
+
+    return songs;
   }
 
   private async getCachedOrFetch(cacheKey: string, ttlSeconds: number, fetchFn: () => Promise<TJSong[]>): Promise<TJSong[]> {
@@ -84,7 +108,7 @@ export class TJKaraokeService {
         {
           headers: {
             "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": this.userAgent,
             "Referer": "https://www.tjmedia.com/chart/top100",
           },
         }
@@ -125,19 +149,32 @@ export class TJKaraokeService {
 
   async searchByTitle(title: string, page: number = 1): Promise<SearchResult> {
     try {
-      const searchTerm = title.trim();
-      const response = await axios.get(`${this.baseUrl}/song/${encodeURIComponent(searchTerm)}/tj.json`);
-      const songs = this.parseResponse(response.data);
+      const searchTerm = title.trim().replace(/\s/g, "");
+      const params = new URLSearchParams({
+        nationType: "",
+        strType: "1",
+        searchTxt: searchTerm,
+        pageNo: String(page),
+        pageRowCnt: "20",
+        strSotrGubun: "ASC",
+        strSortType: "",
+      });
 
-      const pageSize = 20;
-      const start = (page - 1) * pageSize;
-      const paginatedSongs = songs.slice(start, start + pageSize);
+      const response = await axios.get(
+        `${this.tjSearchUrl}?${params.toString()}`,
+        {
+          headers: {
+            "User-Agent": this.userAgent,
+          },
+        }
+      );
 
+      const songs = this.parseTJSearchHTML(response.data);
       return {
-        songs: paginatedSongs,
+        songs,
         total: songs.length,
         page,
-        hasMore: start + pageSize < songs.length,
+        hasMore: songs.length >= 20,
       };
     } catch (error) {
       console.error("TJ title search error:", error);
@@ -147,19 +184,32 @@ export class TJKaraokeService {
 
   async searchByArtist(artist: string, page: number = 1): Promise<SearchResult> {
     try {
-      const searchTerm = artist.trim();
-      const response = await axios.get(`${this.baseUrl}/singer/${encodeURIComponent(searchTerm)}/tj.json`);
-      const songs = this.parseResponse(response.data);
+      const searchTerm = artist.trim().replace(/\s/g, "");
+      const params = new URLSearchParams({
+        nationType: "",
+        strType: "2",
+        searchTxt: searchTerm,
+        pageNo: String(page),
+        pageRowCnt: "20",
+        strSotrGubun: "ASC",
+        strSortType: "",
+      });
 
-      const pageSize = 20;
-      const start = (page - 1) * pageSize;
-      const paginatedSongs = songs.slice(start, start + pageSize);
+      const response = await axios.get(
+        `${this.tjSearchUrl}?${params.toString()}`,
+        {
+          headers: {
+            "User-Agent": this.userAgent,
+          },
+        }
+      );
 
+      const songs = this.parseTJSearchHTML(response.data);
       return {
-        songs: paginatedSongs,
+        songs,
         total: songs.length,
         page,
-        hasMore: start + pageSize < songs.length,
+        hasMore: songs.length >= 20,
       };
     } catch (error) {
       console.error("TJ artist search error:", error);
@@ -169,9 +219,29 @@ export class TJKaraokeService {
 
   async searchByNumber(number: string): Promise<TJSong | null> {
     try {
-      const response = await axios.get(`${this.baseUrl}/no/${number}/tj.json`);
-      const songs = this.parseResponse(response.data);
-      return songs.length > 0 ? songs[0] : null;
+      const params = new URLSearchParams({
+        nationType: "",
+        strType: "16",
+        searchTxt: number.trim(),
+        pageNo: "1",
+        pageRowCnt: "20",
+        strSotrGubun: "ASC",
+        strSortType: "",
+      });
+
+      const response = await axios.get(
+        `${this.tjSearchUrl}?${params.toString()}`,
+        {
+          headers: {
+            "User-Agent": this.userAgent,
+          },
+        }
+      );
+
+      const songs = this.parseTJSearchHTML(response.data);
+      // Find exact match by number
+      const exactMatch = songs.find(s => s.number === number.trim());
+      return exactMatch || (songs.length > 0 ? songs[0] : null);
     } catch (error) {
       console.error("TJ number search error:", error);
       return null;
@@ -179,27 +249,8 @@ export class TJKaraokeService {
   }
 
   async getNewReleases(country: Country = "ALL", limit: number = 100): Promise<TJSong[]> {
-    try {
-      const response = await axios.get(`${this.baseUrl}/tj.json`);
-      const songs = this.parseResponse(response.data);
-      const filtered = this.filterByCountry(songs, country);
-      return filtered.slice(0, limit);
-    } catch (error) {
-      console.error("TJ new releases error:", error);
-      return [];
-    }
-  }
-
-  private parseResponse(data: unknown): TJSong[] {
-    if (!Array.isArray(data)) return [];
-
-    return data.map((item: Record<string, unknown>) => ({
-      number: String(item.no || ""),
-      title: String(item.title || ""),
-      artist: Array.isArray(item.singer) ? item.singer.join(", ") : String(item.singer || ""),
-      composer: Array.isArray(item.composer) ? item.composer.join(", ") : String(item.composer || ""),
-      lyricist: Array.isArray(item.lyricist) ? item.lyricist.join(", ") : String(item.lyricist || ""),
-    })).filter(song => song.number && song.title);
+    // New song page is under maintenance, use chart as fallback
+    return this.getChartByCountry(country, "monthly");
   }
 }
 
