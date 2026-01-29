@@ -2,6 +2,7 @@ import os
 import json
 import re
 import gc
+import uuid
 import torch
 
 # --- PyTorch 2.8 compatibility patch ---
@@ -189,9 +190,9 @@ class LyricsProcessor:
             rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
             times = librosa.times_like(rms, sr=sr, hop_length=512)
             
-            # Get global min/max for normalization
-            rms_min, rms_max = rms.min(), rms.max()
-            rms_range = rms_max - rms_min + 1e-8
+            # Windowed normalization to preserve local dynamics
+            window_size_frames = int(30 * sr / 512)
+            window_size_frames = max(window_size_frames, 1)
             
             total_words = 0
             energy_added = 0
@@ -207,14 +208,35 @@ class LyricsProcessor:
                     end_idx = np.searchsorted(times, end_time)
                     
                     if start_idx < end_idx and end_idx <= len(rms):
-                        word_rms = rms[start_idx:end_idx].mean()
-                        # Normalize to 0-1
-                        energy = (word_rms - rms_min) / rms_range
+                        center = (start_idx + end_idx) // 2
+                        win_start = max(0, center - window_size_frames // 2)
+                        win_end = min(len(rms), center + window_size_frames // 2)
+                        local_rms = rms[win_start:win_end]
+                        local_min = float(local_rms.min()) if len(local_rms) else 0.0
+                        local_max = float(local_rms.max()) if len(local_rms) else 1.0
+                        local_range = local_max - local_min + 1e-8
+
+                        word_rms_slice = rms[start_idx:end_idx]
+                        word_rms = float(word_rms_slice.mean())
+                        # Normalize to 0-1 within local window
+                        energy = (word_rms - local_min) / local_range
                         word["energy"] = round(float(energy), 3)
+
+                        # Energy contour (4-8 samples) across the word duration
+                        if len(word_rms_slice) > 1:
+                            n_points = min(6, len(word_rms_slice))
+                            indices = np.linspace(0, len(word_rms_slice) - 1, n_points, dtype=int)
+                            curve = word_rms_slice[indices]
+                            curve_normalized = (curve - local_min) / local_range
+                            word["energy_curve"] = [round(float(v), 3) for v in curve_normalized]
+                        else:
+                            word["energy_curve"] = [round(float(energy), 3)]
+
                         energy_added += 1
                     else:
                         # Default for very short words or edge cases
                         word["energy"] = 0.5
+                        word["energy_curve"] = [0.5]
             
             print(f"[Energy] Added energy values to {energy_added}/{total_words} words")
             return segments
@@ -225,6 +247,7 @@ class LyricsProcessor:
             for segment in segments:
                 for word in segment.get("words", []):
                     word["energy"] = 0.5
+                    word["energy_curve"] = [0.5]
             return segments
 
     def _add_pitch_to_words(self, vocals_path: str, segments: List[Dict]) -> List[Dict]:
@@ -387,6 +410,34 @@ class LyricsProcessor:
                 for word in segment.get("words", []):
                     word["voiced"] = 0.5
             return segments
+
+    def _get_speech_segments(self, vocals_path: str) -> List[tuple]:
+        """Get speech segments using Silero-VAD (start/end in seconds)."""
+        try:
+            from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
+
+            vad_model = load_silero_vad()
+            wav = read_audio(vocals_path, sampling_rate=16000)
+
+            speech_timestamps = get_speech_timestamps(
+                wav, vad_model,
+                sampling_rate=16000,
+                threshold=0.3,
+                min_speech_duration_ms=100,
+                min_silence_duration_ms=50,
+            )
+
+            speech_ranges = [(ts['start'] / 16000.0, ts['end'] / 16000.0)
+                             for ts in speech_timestamps]
+
+            del vad_model
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+            return speech_ranges
+        except Exception as e:
+            print(f"[VAD] Failed to get speech segments: {e}")
+            return []
 
     # ------------------------------------------------------------------
     # NEW: WhisperX pipeline helpers
@@ -615,17 +666,149 @@ class LyricsProcessor:
     def _build_lines_with_mfa_only(self, audio_path: str, lyrics_text: str, language: str) -> List[Dict]:
         """Build lines from API text using MFA-only timing (when WhisperX fails)."""
         mfa_words: List[Dict] = []
+
+        def _clean_text_for_mfa(text: str) -> str:
+            clean = text.replace("\n", " ")
+            clean = re.sub(r'\[.*?\]', '', clean)
+            clean = re.sub(r'\(.*?\)', '', clean)
+            clean = re.sub(r'[♪~]', '', clean)
+            clean = re.sub(r'\s+', ' ', clean).strip()
+            return clean
+
         if mfa_processor.is_available() and language in mfa_processor.LANGUAGE_MODELS:
             try:
-                clean_text = lyrics_text.replace("\n", " ")
-                clean_text = re.sub(r'\[.*?\]', '', clean_text)
-                clean_text = re.sub(r'\(.*?\)', '', clean_text)
-                clean_text = re.sub(r'[♪~]', '', clean_text)
-                clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+                raw_lines = [line.strip() for line in lyrics_text.split("\n") if line.strip()]
+                speech_segments = self._get_speech_segments(audio_path)
+
+                if not raw_lines or not speech_segments:
+                    raise RuntimeError("No lines or speech segments for chunked alignment")
+
+                # Build chunks from speech segments
+                max_chunk_dur = 40.0
+                min_chunk_dur = 20.0
+                gap_threshold = 1.0
+
+                chunks = []
+                current_start, current_end = speech_segments[0]
+                for seg_start, seg_end in speech_segments[1:]:
+                    gap = seg_start - current_end
+                    proposed_dur = seg_end - current_start
+                    if gap > gap_threshold or (proposed_dur > max_chunk_dur and (current_end - current_start) >= min_chunk_dur):
+                        chunks.append((current_start, current_end))
+                        current_start, current_end = seg_start, seg_end
+                    else:
+                        current_end = seg_end
+                chunks.append((current_start, current_end))
+
+                # Merge very short chunks to stabilize alignment
+                merged_chunks = []
+                for start, end in chunks:
+                    if merged_chunks and (end - start) < 5.0:
+                        prev_start, prev_end = merged_chunks[-1]
+                        merged_chunks[-1] = (prev_start, end)
+                    else:
+                        merged_chunks.append((start, end))
+                chunks = merged_chunks
+
+                if len(chunks) > len(raw_lines):
+                    merged_chunks = []
+                    for start, end in chunks:
+                        if len(merged_chunks) < len(raw_lines) - 1:
+                            merged_chunks.append((start, end))
+                        else:
+                            prev_start, prev_end = merged_chunks[-1]
+                            merged_chunks[-1] = (prev_start, end)
+                    chunks = merged_chunks
+
+                # Load audio once for slicing
+                y, sr = librosa.load(audio_path, sr=16000, mono=True)
+                audio_duration = len(y) / sr if sr else 0.0
+
+                line_lengths = [max(1, len(re.sub(r'\s+', '', line))) for line in raw_lines]
+                total_units = sum(line_lengths)
+                chunk_durations = [max(0.1, end - start) for start, end in chunks]
+                total_chunk_units = sum(chunk_durations)
+
+                # Assign lines to chunks proportionally by duration
+                assignments = []
+                line_index = 0
+                remaining_lines = len(raw_lines)
+                remaining_units = total_units
+                remaining_chunk_units = total_chunk_units
+                for idx, (start, end) in enumerate(chunks):
+                    if idx == len(chunks) - 1:
+                        count = remaining_lines
+                    else:
+                        target_units = remaining_units * (chunk_durations[idx] / remaining_chunk_units) if remaining_chunk_units > 0 else remaining_units
+                        acc_units = 0
+                        count = 0
+                        while line_index + count < len(raw_lines) and acc_units < target_units and (remaining_lines - count) > (len(chunks) - idx - 1):
+                            acc_units += line_lengths[line_index + count]
+                            count += 1
+                        if count == 0:
+                            count = 1
+
+                    assignments.append((start, end, line_index, line_index + count))
+                    used_units = sum(line_lengths[line_index:line_index + count])
+                    line_index += count
+                    remaining_lines -= count
+                    remaining_units -= used_units
+                    remaining_chunk_units -= chunk_durations[idx]
+
+                for start, end, start_line, end_line in assignments:
+                    chunk_lines = raw_lines[start_line:end_line]
+                    if not chunk_lines:
+                        continue
+                    chunk_text = _clean_text_for_mfa(" ".join(chunk_lines))
+                    if not chunk_text:
+                        continue
+
+                    chunk_start = max(0.0, start - 0.1)
+                    chunk_end = end + 0.1
+                    if audio_duration > 0:
+                        chunk_end = min(audio_duration, chunk_end)
+
+                    start_sample = int(chunk_start * sr)
+                    end_sample = int(chunk_end * sr)
+                    if end_sample <= start_sample:
+                        continue
+
+                    chunk_audio = y[start_sample:end_sample]
+                    temp_path = os.path.join(TEMP_DIR, f"mfa_chunk_{uuid.uuid4().hex}.wav")
+                    sf.write(temp_path, chunk_audio, sr)
+
+                    try:
+                        chunk_words = mfa_processor.align_lyrics(temp_path, chunk_text, language)
+                    finally:
+                        try:
+                            os.remove(temp_path)
+                        except OSError:
+                            pass
+
+                    if not chunk_words:
+                        raise RuntimeError("Chunked MFA alignment returned no words")
+
+                    for word in chunk_words:
+                        mfa_words.append({
+                            "start_time": round(word["start_time"] + chunk_start, 3),
+                            "end_time": round(word["end_time"] + chunk_start, 3),
+                            "text": word["text"],
+                        })
+
+                mfa_words.sort(key=lambda w: w["start_time"])
+                print(f"[MFA-only] Chunked alignment produced {len(mfa_words)} words across {len(chunks)} chunks")
+            except Exception as e:
+                print(f"[MFA-only] Chunked alignment failed: {e} — falling back to single pass")
+                mfa_words = []
+
+        if not mfa_words and mfa_processor.is_available() and language in mfa_processor.LANGUAGE_MODELS:
+            try:
+                clean_text = _clean_text_for_mfa(lyrics_text)
                 mfa_words = mfa_processor.align_lyrics(audio_path, clean_text, language)
-                print(f"[MFA-only] Aligned {len(mfa_words)} words")
+                print(f"[MFA-only] Aligned {len(mfa_words)} words (single pass)")
             except Exception as e:
                 print(f"[MFA-only] Failed: {e}")
+
         return self._build_lines_from_mfa_fallback(lyrics_text, mfa_words)
 
     def _refine_with_mfa(self, lines: List[Dict], mfa_words: List[Dict]) -> List[Dict]:
