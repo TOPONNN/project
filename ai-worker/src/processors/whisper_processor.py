@@ -153,11 +153,13 @@ class LyricsProcessor:
                     })
 
             if line_words:
+                # Sort words by start_time to ensure chronological order
+                line_words.sort(key=lambda w: w["start_time"])
                 line_start = line_words[0]["start_time"]
-                line_end = line_words[-1]["end_time"]
-                # Safety: ensure end >= start (prevents timing reversal)
+                line_end = max(w["end_time"] for w in line_words)
+                # Safety: ensure end >= start
                 if line_end < line_start:
-                    line_end = line_words[-1]["start_time"] + 0.3
+                    line_end = line_start + 1.0
                 result_lines.append({
                     "start_time": line_start,
                     "end_time": line_end,
