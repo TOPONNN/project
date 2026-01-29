@@ -73,9 +73,12 @@ export default function NormalModeGame() {
       
       // 현재 라인 끝났지만 다음 라인 시작 전 (갭 구간)
       if (time > line.endTime && nextLine && time < nextLine.startTime) {
-        // 갭이 2초 이하면 현재 라인 유지
+        // Short gap: hold current line briefly after it ends
         if (nextLine.startTime - line.endTime <= 2.0) {
-          return i;
+          // Only hold for LINE_HOLD_AFTER_END seconds after line ends
+          if (time <= line.endTime + SYNC_CONFIG.LINE_HOLD_AFTER_END) {
+            return i;
+          }
         }
         return -1;
       }
@@ -235,25 +238,23 @@ export default function NormalModeGame() {
 
   const progress = duration ? (localTime / duration) * 100 : 0;
 
-  // 단어별 하이라이트 진행률 계산 (라인 기반으로 균등 분배)
+  // 단어별 하이라이트 진행률 계산 (MFA 타이밍 기반)
   const getWordProgressInLine = useCallback((line: LyricsLine, wordIndex: number): number => {
     if (!line.words || line.words.length === 0) return 0;
     
-    const lineDuration = line.endTime - line.startTime;
-    const wordCount = line.words.length;
-    const wordDuration = lineDuration / wordCount;
+    const word = line.words[wordIndex];
+    const wordStart = word.startTime - SYNC_CONFIG.WORD_LEAD_TIME;
+    const wordEnd = word.endTime;
+    const wordDuration = wordEnd - wordStart;
     
-    const wordStart = line.startTime + (wordIndex * wordDuration);
-    const wordEnd = wordStart + wordDuration;
-    
+    if (wordDuration <= 0) return localTime >= wordStart ? 100 : 0;
     if (localTime < wordStart) return 0;
     if (localTime >= wordEnd) return 100;
     
-    const currentWord = line.words[wordIndex];
-    const energy = currentWord.energy ?? 0.5;
     const linearProgress = ((localTime - wordStart) / wordDuration) * 100;
     
-    // Energy-based easing
+    // Energy-based easing: words with higher energy fill faster at the start
+    const energy = word.energy ?? 0.5;
     const exponent = 1 / (0.5 + energy);
     const easedProgress = Math.pow(linearProgress / 100, exponent) * 100;
     
@@ -284,8 +285,14 @@ export default function NormalModeGame() {
     return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=${videoId}&modestbranding=1&enablejsapi=1`;
   }, [videoId]);
 
-  const currentLine = lyrics[currentLyricIndex];
-  const nextLine = lyrics[currentLyricIndex + 1];
+  const currentLine = currentLyricIndex >= 0 ? lyrics[currentLyricIndex] : undefined;
+  const nextLine = useMemo(() => {
+    if (currentLyricIndex >= 0) {
+      return lyrics[currentLyricIndex + 1] || null;
+    }
+    // During rest: find the actual next upcoming line
+    return lyrics.find(line => line.startTime > localTime) || null;
+  }, [currentLyricIndex, lyrics, localTime]);
 
   return (
     <div className="relative w-full h-full bg-black overflow-hidden select-none">
