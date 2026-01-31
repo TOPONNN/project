@@ -5,7 +5,7 @@ import http from "http";
 import dotenv from "dotenv";
 import { AppDataSource } from "./config/database";
 import { connectRabbitMQ } from "./config/rabbitmq";
-import { initializeSocket } from "./socket";
+import { initializeSocket, getOnlineUsers } from "./socket";
 import authRoutes from "./routes/auth";
 import roomRoutes from "./routes/rooms";
 import songRoutes from "./routes/songs";
@@ -29,6 +29,11 @@ app.use("/api/livekit", livekitRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+app.get("/api/online", (req, res) => {
+  const data = getOnlineUsers();
+  res.json({ success: true, data });
 });
 
 const PORT = process.env.PORT || 4000;
