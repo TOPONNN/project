@@ -148,8 +148,8 @@ function RoomContent({ hideControls, onStatusChange }: { hideControls: boolean; 
   }, [toggleCamera, toggleMicrophone]);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-hidden">
+    <div className={`flex flex-col ${hideControls ? '' : 'h-full'}`}>
+      <div className={hideControls ? '' : 'flex-1 overflow-hidden'}>
         <VideoGrid />
       </div>
       {!hideControls && (
@@ -201,34 +201,32 @@ function VideoGrid() {
 
   if (cameraTracks.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-white/60 text-sm">
-        <div className="flex flex-col items-center gap-2">
-          <CameraOff className="w-8 h-8 text-gray-500" />
+      <div className="flex items-center justify-center aspect-[4/3] text-white/60 text-xs">
+        <div className="flex flex-col items-center gap-1.5">
+          <CameraOff className="w-6 h-6 text-gray-500" />
           <span>카메라 대기 중...</span>
         </div>
       </div>
     );
   }
 
-  // For a vertical sidebar, use rows-based layout
-  const gridClass = cameraTracks.length === 1 ? "grid-cols-1 grid-rows-1" :
-                    cameraTracks.length === 2 ? "grid-cols-1 grid-rows-2" :
-                    cameraTracks.length <= 4 ? "grid-cols-2 grid-rows-2" :
-                    "grid-cols-2 grid-rows-3";
+  const gridClass = cameraTracks.length === 1 ? "grid-cols-1" :
+                    cameraTracks.length === 2 ? "grid-cols-1" :
+                    "grid-cols-2";
 
   return (
-    <div className={`grid ${gridClass} gap-1.5 h-full p-1.5`}>
+    <div className={`grid ${gridClass} gap-0.5 p-0.5`}>
       {cameraTracks.map((trackRef) => (
         <div
           key={trackRef.participant.sid}
-          className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/5"
+          className="relative aspect-[4/3] bg-zinc-900 rounded-md overflow-hidden border border-white/5"
         >
           <VideoTrack
             trackRef={trackRef}
-            className="w-full h-full object-cover"
+            className="absolute inset-0 w-full h-full object-cover"
           />
-          <div className="absolute bottom-1 left-1 px-2 py-0.5 bg-black/60 backdrop-blur-md rounded-full text-[9px] font-bold text-white/90 border border-white/10 flex items-center gap-1 shadow-lg">
-             <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)]" />
+          <div className="absolute bottom-0.5 left-0.5 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm rounded text-[8px] font-bold text-white/90 flex items-center gap-0.5">
+            <div className="w-1 h-1 rounded-full bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.8)]" />
             {trackRef.participant.name || trackRef.participant.identity}
           </div>
         </div>

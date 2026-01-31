@@ -375,8 +375,8 @@ export class SongService {
      };
 
      // Strip parenthesized content from titles: "봄날 (Spring Day)" → "봄날"
-     const cleanTitle = (title: string): string => 
-       title.replace(/\s*[\(（\[【].*?[\)）\]】]/g, '').trim();
+      const cleanTitle = (title: string): string => 
+        title.replace(/\s*[\(（\[【].*?[\)）\]】]/g, '').replace(/[\(（\[【\)）\]】]/g, '').trim();
 
     if (tjSongs.length >= 4) {
       const shuffledTJ = shuffle(tjSongs);

@@ -77,7 +77,7 @@ export default function LyricsQuizGame() {
    const [wrongCount, setWrongCount] = useState(0);
    const [maxStreakLocal, setMaxStreakLocal] = useState(0);
 
-   const cleanDisplay = (s: string) => s?.replace(/\s*[\(（\[【].*?[\)）\]】]/g, '').trim() || '';
+    const cleanDisplay = (s: string) => s?.replace(/\s*[\(（\[【].*?[\)）\]】]/g, '').replace(/[\(（\[【\)）\]】]/g, '').trim() || '';
 
    const currentQuestion = quizQuestions[currentQuestionIndex];
 
@@ -315,7 +315,7 @@ export default function LyricsQuizGame() {
      }
      setYoutubeVideoId(null);
 
-     const normalize = (s: string) => s.replace(/\s*[\(（\[].*?[\)）\]]/g, '').replace(/\s/g, '').toLowerCase();
+      const normalize = (s: string) => s.replace(/\s*[\(（\[【].*?[\)）\]】]/g, '').replace(/[\(（\[【\)）\]】]/g, '').replace(/\s/g, '').toLowerCase();
      const isCorrect = normalize(textAnswer.trim()) === normalize(currentQuestion.correctAnswer || "");
      const points = isCorrect ? Math.round(1000 * (timeLeft / (currentQuestion.timeLimit || 20))) : 0;
 

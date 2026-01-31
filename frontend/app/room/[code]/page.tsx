@@ -525,41 +525,40 @@ export default function RoomPage() {
           <ArrowLeft className="w-5 h-5" />
         </button>
 
-        {/* Top-right: Camera overlay - vertical sidebar */}
-        <div className="absolute top-3 right-2 bottom-16 w-52 rounded-2xl overflow-hidden border border-white/20 shadow-2xl z-40 bg-black/30 backdrop-blur-sm">
-          <VideoRoom
-            roomCode={code}
-            participantName={userName}
-            participantId={visitorId}
-            hideControls={true}
-            onStatusChange={setMediaStatus}
-          />
-        </div>
-
-        {/* Bottom-right: Media controls */}
-        <div className="absolute bottom-3 right-2 z-50 flex items-center gap-2 bg-black/40 backdrop-blur-md rounded-full px-3 py-1.5">
-          <button
-            onClick={handleMicToggle}
-            className={`p-2 rounded-full backdrop-blur-md transition-all ${
-              mediaStatus.isMicOn
-                ? "bg-white/10 hover:bg-white/20 text-white"
-                : "bg-red-500/80 hover:bg-red-500 text-white"
-            }`}
-            title={mediaStatus.isMicOn ? "마이크 끄기" : "마이크 켜기"}
-          >
-            {mediaStatus.isMicOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-          </button>
-          <button
-            onClick={handleCameraToggle}
-            className={`p-2 rounded-full backdrop-blur-md transition-all ${
-              mediaStatus.isCameraOn
-                ? "bg-white/10 hover:bg-white/20 text-white"
-                : "bg-red-500/80 hover:bg-red-500 text-white"
-            }`}
-            title={mediaStatus.isCameraOn ? "카메라 끄기" : "카메라 켜기"}
-          >
-            {mediaStatus.isCameraOn ? <Video className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
-          </button>
+        <div className="absolute top-3 right-2 z-40 w-48 flex flex-col rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black/40 backdrop-blur-md max-h-[70vh]">
+          <div className="w-full">
+            <VideoRoom
+              roomCode={code}
+              participantName={userName}
+              participantId={visitorId}
+              hideControls={true}
+              onStatusChange={setMediaStatus}
+            />
+          </div>
+          <div className="flex items-center justify-center gap-2 py-1.5 px-2 border-t border-white/10 bg-black/30">
+            <button 
+              onClick={handleMicToggle} 
+              className={`p-1.5 rounded-full transition-all ${
+                mediaStatus.isMicOn 
+                  ? "text-white/70 hover:text-white hover:bg-white/10" 
+                  : "bg-red-500/80 text-white"
+              }`}
+              title={mediaStatus.isMicOn ? "마이크 끄기" : "마이크 켜기"}
+            >
+              {mediaStatus.isMicOn ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
+            </button>
+            <button 
+              onClick={handleCameraToggle} 
+              className={`p-1.5 rounded-full transition-all ${
+                mediaStatus.isCameraOn 
+                  ? "text-white/70 hover:text-white hover:bg-white/10" 
+                  : "bg-red-500/80 text-white"
+              }`}
+              title={mediaStatus.isCameraOn ? "카메라 끄기" : "카메라 켜기"}
+            >
+              {mediaStatus.isCameraOn ? <Video className="w-3.5 h-3.5" /> : <CameraOff className="w-3.5 h-3.5" />}
+            </button>
+          </div>
         </div>
       </div>
     );

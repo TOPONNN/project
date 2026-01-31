@@ -254,11 +254,11 @@ export class LyricsQuizHandler {
 
   private validateAnswer(question: any, answer: any): boolean {
     switch (question.type) {
-      case "lyrics_fill":
-      case "title_guess":
-      case "artist_guess": {
-        const normalize = (s: string) => s.replace(/\s*[\(（\[].*?[\)）\]]/g, '').replace(/\s/g, "").toLowerCase();
-        return normalize(String(answer)) === normalize(question.correctAnswer);
+       case "lyrics_fill":
+       case "title_guess":
+       case "artist_guess": {
+         const normalize = (s: string) => s.replace(/\s*[\(（\[【].*?[\)）\]】]/g, '').replace(/[\(（\[【\)）\]】]/g, '').replace(/\s/g, "").toLowerCase();
+         return normalize(String(answer)) === normalize(question.correctAnswer);
       }
       case "lyrics_order":
         try {
@@ -269,9 +269,9 @@ export class LyricsQuizHandler {
         } catch {
           return false;
         }
-      case "initial_guess": {
-        const normalize = (s: string) => s.replace(/\s*[\(（\[].*?[\)）\]]/g, '').replace(/\s/g, "").toLowerCase();
-        return normalize(String(answer)) === normalize(question.correctAnswer);
+       case "initial_guess": {
+         const normalize = (s: string) => s.replace(/\s*[\(（\[【].*?[\)）\]】]/g, '').replace(/[\(（\[【\)）\]】]/g, '').replace(/\s/g, "").toLowerCase();
+         return normalize(String(answer)) === normalize(question.correctAnswer);
       }
       case "true_false":
         return String(answer) === question.correctAnswer;
