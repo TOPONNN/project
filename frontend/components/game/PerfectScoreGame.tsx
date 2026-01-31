@@ -81,7 +81,7 @@ export default function PerfectScoreGame() {
     return list;
   }, [lyrics]);
 
-  const midiRange = useMemo(() => ({ min: 36, max: 84 }), []);
+  const midiRange = useMemo(() => ({ min: 36, max: 95 }), []);
 
   const findCurrentLyricIndex = useCallback((time: number): number => {
     if (lyrics.length === 0) return -1;
@@ -274,14 +274,10 @@ export default function PerfectScoreGame() {
         latestPitchRef.current = { frequency, time: now };
         const rawMidi = 69 + 12 * Math.log2(frequency / 440);
         
-        lastRawPitchesRef.current.push(rawMidi);
-        if (lastRawPitchesRef.current.length > 3) {
-          lastRawPitchesRef.current.shift();
-        }
+        // Quantize to nearest semitone for cleaner visualization
+        const quantizedMidi = Math.round(rawMidi);
         
-        const smoothedMidi = lastRawPitchesRef.current.reduce((sum, val) => sum + val, 0) / lastRawPitchesRef.current.length;
-        
-        userPitchTrailRef.current.push({ time: now, midi: smoothedMidi });
+        userPitchTrailRef.current.push({ time: now, midi: quantizedMidi });
         if (now - lastPitchUpdateRef.current > 0.08) {
           lastPitchUpdateRef.current = now;
         }
@@ -417,12 +413,25 @@ export default function PerfectScoreGame() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Helper for drawing pill shapes (rounded rectangles)
+    const drawPill = (x: number, y: number, width: number, height: number) => {
+      const r = height / 2;
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + width - r, y);
+      ctx.arc(x + width - r, y + r, r, -Math.PI / 2, Math.PI / 2);
+      ctx.lineTo(x + r, y + height);
+      ctx.arc(x + r, y + r, r, Math.PI / 2, -Math.PI / 2);
+      ctx.closePath();
+    };
+
     const draw = () => {
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
       ctx.clearRect(0, 0, width, height);
 
-      ctx.fillStyle = "rgba(6, 8, 20, 0.6)";
+      // Darker, more blue-tinted background
+      ctx.fillStyle = "rgba(0, 5, 25, 0.7)";
       ctx.fillRect(0, 0, width, height);
 
       const leftPadding = 54;
@@ -442,84 +451,184 @@ export default function PerfectScoreGame() {
         return topPadding + ((midiRange.max - midi) / range) * staffHeight;
       };
 
+      // --- 1. Draw Grid Lines (Every semitone) ---
       for (let midi = midiRange.min; midi <= midiRange.max; midi += 1) {
         const y = midiToY(midi);
         const noteIdx = midi % 12;
         const isC = noteIdx === 0;
         const isNatural = [0, 2, 4, 5, 7, 9, 11].includes(noteIdx);
+        
+        ctx.beginPath();
+        ctx.moveTo(leftPadding, y);
+        ctx.lineTo(width, y);
 
         if (isC) {
-          ctx.beginPath();
-          ctx.moveTo(leftPadding, y);
-          ctx.lineTo(width, y);
+          // Bold white line for C notes
           ctx.lineWidth = 1.5;
-          ctx.strokeStyle = "rgba(255,255,255,0.15)";
+          ctx.strokeStyle = "rgba(255,255,255,0.2)";
+          ctx.setLineDash([]);
           ctx.stroke();
 
+          // Note Label
           const octave = Math.floor(midi / 12) - 1;
           const label = `C${octave}`;
-          ctx.fillStyle = "rgba(255,255,255,0.6)";
+          ctx.fillStyle = "rgba(255,255,255,0.8)";
           ctx.font = "bold 11px 'Noto Sans KR', sans-serif";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillText(label, 22, y);
         } else if (isNatural) {
-          ctx.beginPath();
-          ctx.moveTo(leftPadding, y);
-          ctx.lineTo(width, y);
+          // Thin line for natural notes
           ctx.lineWidth = 0.5;
-          ctx.strokeStyle = "rgba(255,255,255,0.04)";
+          ctx.strokeStyle = "rgba(255,255,255,0.07)";
+          ctx.setLineDash([]);
           ctx.stroke();
+        } else {
+          // Faint dotted line for sharps/flats
+          ctx.lineWidth = 0.5;
+          ctx.strokeStyle = "rgba(255,255,255,0.03)";
+          ctx.setLineDash([2, 4]); // Dotted
+          ctx.stroke();
+          ctx.setLineDash([]); // Reset
         }
       }
 
-      ctx.strokeStyle = "rgba(255,215,0,0.8)";
+      // --- 2. Draw Hit Line (Scanner) ---
+      // White/Cyan glowing vertical line
+      ctx.save();
+      ctx.shadowColor = "rgba(0, 229, 255, 0.6)";
+      ctx.shadowBlur = 15;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(hitLineX, 0);
       ctx.lineTo(hitLineX, height);
       ctx.stroke();
+      ctx.restore();
 
-      ctx.fillStyle = "rgba(255,255,255,0.25)";
+      // --- 3. Draw Target Notes (Cyan Pills) ---
       words.forEach((word) => {
         if (typeof word.midi !== "number") return;
+        // Optimization: Skip if outside view
         if (word.endTime < startTime || word.startTime > endTime) return;
+
         const xStart = hitLineX + (word.startTime - now) * pixelsPerSecond;
         const xEnd = hitLineX + (word.endTime - now) * pixelsPerSecond;
-        const barWidth = Math.max(2, xEnd - xStart);
-        const y = midiToY(word.midi);
-        ctx.fillRect(xStart, y - 6, barWidth, 12);
+        // Ensure minimum width for visibility
+        const barWidth = Math.max(10, xEnd - xStart);
+        const yCenter = midiToY(word.midi);
+        const barHeight = 10; // Chunkier, pill shape
+        const yTop = yCenter - barHeight / 2;
+
+        // Check if this note has been passed/hit
+        const isPast = word.endTime < now;
+        // Ideally we check score, but for now purely visual "passed" state
+        // If passed, we can dim it or keep it bright if hit. 
+        // Simulating "active" vs "future" vs "past"
+        
+        // Gradient Fill
+        const grad = ctx.createLinearGradient(0, yTop, 0, yTop + barHeight);
+        if (isPast) {
+           // Slightly dimmer for past
+           grad.addColorStop(0, "rgba(0, 229, 255, 0.4)");
+           grad.addColorStop(1, "rgba(0, 180, 200, 0.6)");
+        } else {
+           // Bright Cyan for active/future
+           grad.addColorStop(0, "rgba(200, 255, 255, 0.9)"); // Top highlight
+           grad.addColorStop(0.3, "rgba(0, 229, 255, 0.8)"); // Main cyan
+           grad.addColorStop(1, "rgba(0, 150, 200, 0.9)"); // Bottom shadow
+        }
+
+        ctx.fillStyle = grad;
+        
+        // Draw Pill
+        drawPill(xStart, yTop, barWidth, barHeight);
+        ctx.fill();
+
+        // White Border
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
       });
 
+      // --- 4. Draw User Pitch Trail (Quantized Step-Function) ---
       const trail = userPitchTrailRef.current;
-      if (trail.length > 1) {
-        ctx.strokeStyle = "#FFD700";
-        ctx.lineWidth = 2.5;
-        ctx.shadowColor = "rgba(255,215,0,0.5)";
-        ctx.shadowBlur = 8;
+      if (trail.length > 0) {
+        ctx.save();
+        ctx.strokeStyle = "#FFD700"; // Gold
+        ctx.lineWidth = 3;
+        ctx.shadowColor = "rgba(255, 215, 0, 0.6)";
+        ctx.shadowBlur = 10;
         ctx.lineCap = "round";
-        ctx.lineJoin = "round";
+        ctx.lineJoin = "miter"; // Sharp corners for steps
         ctx.beginPath();
         
-        trail.forEach((point, index) => {
+        let started = false;
+
+        for (let i = 0; i < trail.length; i++) {
+          const point = trail[i];
           const x = hitLineX + (point.time - now) * pixelsPerSecond;
-          const y = midiToY(point.midi);
-          
-          if (index === 0) {
+          const y = midiToY(point.midi); // This is already quantized
+
+          if (x < 0) continue; // Skip if off-screen left (optimization)
+
+          if (!started) {
             ctx.moveTo(x, y);
+            started = true;
           } else {
-            const prevPoint = trail[index - 1];
-            const jump = Math.abs(point.midi - prevPoint.midi);
+            const prevPoint = trail[i - 1];
+            const prevY = midiToY(prevPoint.midi);
+            // Step function logic:
+            // 1. Draw horizontal line from prevX to currX at prevY level?
+            //    No, usually pitch changes instantaneously.
+            //    Better: Horizontal to mid-point, or direct jump?
+            //    "Step function" usually means hold previous value until new value.
+            //    So: Line from prevX to currX at prevY level? No, that would mean pitch doesn't change until the new sample.
+            //    But we want to connect the points.
+            //    Let's draw: Horizontal from prevX to currX, then Vertical to new Y?
+            //    Or: Vertical from prevY to new Y at prevX, then Horizontal to currX?
+            //    Let's try: Horizontal to currX, then Vertical.
             
-            if (jump > 12) {
-               ctx.moveTo(x, y);
-            } else {
-               ctx.lineTo(x, y);
-            }
+            // Actually, visually for pitch tracking, simple connected lines looks weird if quantized.
+            // Best look: "Staircase".
+            // Draw horizontal line from prevX to currX at prevY?
+            // Then vertical line at currX to currY?
+            
+            // Wait, we have discrete samples.
+            // Let's just connect them with straight lines but since they are quantized, 
+            // if the MIDI is same, it's horizontal. If it changes, it's a slope.
+            // But user wants "vertical jumps".
+            // So: Horizontal from prevX to currX (at prevY), then vertical to currY.
+            
+            ctx.lineTo(x, prevY); // Horizontal
+            ctx.lineTo(x, y);     // Vertical
           }
-        });
+        }
         ctx.stroke();
-        ctx.shadowBlur = 0;
+        
+        // Draw sparkle/dot at the head (latest point)
+        if (trail.length > 0) {
+            const lastPoint = trail[trail.length - 1];
+            const headX = hitLineX + (lastPoint.time - now) * pixelsPerSecond;
+            const headY = midiToY(lastPoint.midi);
+            
+            // Glowing head
+            ctx.fillStyle = "#FFF";
+            ctx.beginPath();
+            ctx.arc(headX, headY, 3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Extra sparkle on hit line if crossing
+            // (Optional detail: sparkle on scanner line)
+             if (Math.abs(headX - hitLineX) < 2) {
+                ctx.fillStyle = "#00E5FF";
+                ctx.beginPath();
+                ctx.arc(headX, headY, 5, 0, Math.PI * 2);
+                ctx.fill();
+             }
+        }
+
+        ctx.restore();
       }
 
       drawAnimationRef.current = requestAnimationFrame(draw);
@@ -576,15 +685,17 @@ export default function PerfectScoreGame() {
       <div className="shrink-0 px-4 pt-4 pb-2 z-20">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-sm text-white/60">TJ 퍼펙트 스코어</p>
+            <p className="text-sm text-white/60 tracking-wider font-bold">PERFECT SCORE</p>
             <h1 className="text-xl sm:text-2xl font-bold truncate max-w-[200px] sm:max-w-md">{currentSong.title}</h1>
             <p className="text-sm text-white/50">{currentSong.artist}</p>
           </div>
           <div className="text-right">
-            <div className="text-3xl sm:text-4xl font-black text-[#FFD700] tabular-nums">
+            <div className="text-3xl sm:text-4xl font-black text-[#FFD700] tabular-nums drop-shadow-lg">
               {score.toLocaleString()}
             </div>
-            <div className="text-lg font-bold text-[#A855F7]">콤보 {combo}</div>
+            <div className="text-xl font-black bg-gradient-to-r from-[#FFD700] to-[#FFAA00] bg-clip-text text-transparent drop-shadow-sm">
+              {combo} COMBO
+            </div>
           </div>
         </div>
 
@@ -630,12 +741,62 @@ export default function PerfectScoreGame() {
         </div>
       </div>
 
-      <div className="shrink-0 px-4 py-2 z-20">
+      <div className="shrink-0 px-4 py-2 z-20 min-h-[100px] flex flex-col justify-center">
         <div className="flex flex-col gap-2 items-center text-center">
-          <div className="text-2xl sm:text-3xl md:text-4xl font-black text-white" style={{ WebkitTextStroke: "2px rgba(0,0,0,0.9)", paintOrder: "stroke fill" }}>
-            {currentLine?.text || "\u00A0"}
+          {/* Current Line - Karaoke Style */}
+          <div className="flex flex-wrap justify-center gap-x-[0.3em] text-2xl sm:text-3xl md:text-4xl font-black">
+            {currentLine ? (
+              currentLine.words && currentLine.words.length > 0 ? (
+                currentLine.words.map((word, idx) => {
+                  const duration = word.endTime - word.startTime;
+                  const progress = duration > 0 
+                    ? Math.max(0, Math.min(1, (localTime - word.startTime) / duration))
+                    : (localTime >= word.endTime ? 1 : 0);
+                  
+                  return (
+                    <span key={idx} className="relative inline-block">
+                      {/* Dim Background Layer */}
+                      <span 
+                        className="text-white/30"
+                        style={{ 
+                          WebkitTextStroke: "2px rgba(0,0,0,0.8)", 
+                          paintOrder: "stroke fill" 
+                        }}
+                      >
+                        {word.text}
+                      </span>
+                      
+                      {/* Bright Foreground Layer (Clipped) */}
+                      <span 
+                        className="absolute left-0 top-0 text-[#00E5FF] overflow-hidden whitespace-nowrap"
+                        style={{ 
+                          width: `${progress * 100}%`,
+                          WebkitTextStroke: "2px rgba(0,0,0,0.9)", 
+                          paintOrder: "stroke fill",
+                          textShadow: "0 0 10px rgba(0, 229, 255, 0.5)"
+                        }}
+                      >
+                        {word.text}
+                      </span>
+                    </span>
+                  );
+                })
+              ) : (
+                // Fallback if no word timings
+                <span className="text-white" style={{ WebkitTextStroke: "2px rgba(0,0,0,0.9)" }}>
+                  {currentLine.text}
+                </span>
+              )
+            ) : (
+              <span>&nbsp;</span>
+            )}
           </div>
-          <div className="text-lg sm:text-2xl font-bold text-white/50" style={{ WebkitTextStroke: "1px rgba(0,0,0,0.8)", paintOrder: "stroke fill" }}>
+
+          {/* Next Line - Dim */}
+          <div 
+            className="text-lg sm:text-2xl font-bold text-white/50 mt-1" 
+            style={{ WebkitTextStroke: "1px rgba(0,0,0,0.8)", paintOrder: "stroke fill" }}
+          >
             {nextLine?.text || "\u00A0"}
           </div>
         </div>
