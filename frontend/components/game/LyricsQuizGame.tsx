@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Users, Check, X, AlertCircle, Send } from "lucide-react";
+import { Trophy, Users, Check, X, AlertCircle, Send, RotateCcw, ArrowLeft } from "lucide-react";
 import type { RootState } from "@/store";
-import { selectAnswer, nextQuestion, revealAnswer, setGameStatus, updateStreak } from "@/store/slices/gameSlice";
+import { selectAnswer, nextQuestion, revealAnswer, setGameStatus, updateStreak, setQuizQuestions, resetQuiz } from "@/store/slices/gameSlice";
 import { useSocket } from "@/hooks/useSocket";
 
 const KAHOOT_COLORS = [
@@ -60,15 +60,16 @@ export default function LyricsQuizGame() {
   const { code, participants } = useSelector((state: RootState) => state.room);
   const { emitEvent } = useSocket(code);
   
-  const [timeLeft, setTimeLeft] = useState(20);
-  const [showResults, setShowResults] = useState(false);
-  const [localScore, setLocalScore] = useState(0);
-  const [submitted, setSubmitted] = useState(false);
-  const hasProcessedRevealRef = useRef(false);
-  const streakRef = useRef(streak);
-  
-  const [ordering, setOrdering] = useState<number[]>([]);
-  const [textAnswer, setTextAnswer] = useState("");
+   const [timeLeft, setTimeLeft] = useState(20);
+   const [showResults, setShowResults] = useState(false);
+   const [localScore, setLocalScore] = useState(0);
+   const [submitted, setSubmitted] = useState(false);
+   const [isRestarting, setIsRestarting] = useState(false);
+   const hasProcessedRevealRef = useRef(false);
+   const streakRef = useRef(streak);
+   
+   const [ordering, setOrdering] = useState<number[]>([]);
+   const [textAnswer, setTextAnswer] = useState("");
 
   const currentQuestion = quizQuestions[currentQuestionIndex];
 
@@ -236,16 +237,69 @@ export default function LyricsQuizGame() {
      }, 800);
    };
 
-  const handleOrderClick = (index: number) => {
-    if (submitted || isAnswerRevealed) return;
-    if (ordering.includes(index)) {
-      setOrdering(prev => prev.filter(i => i !== index));
-    } else {
-      if (ordering.length < 4) {
-        setOrdering(prev => [...prev, index]);
-      }
-    }
-  };
+   const handleOrderClick = (index: number) => {
+     if (submitted || isAnswerRevealed) return;
+     if (ordering.includes(index)) {
+       setOrdering(prev => prev.filter(i => i !== index));
+     } else {
+       if (ordering.length < 4) {
+         setOrdering(prev => [...prev, index]);
+       }
+     }
+   };
+
+   const restartQuiz = async () => {
+     setIsRestarting(true);
+     try {
+       const quizRes = await fetch(`/api/songs/quiz/generate?count=10`);
+       const quizData = await quizRes.json();
+       if (!quizData.success || !quizData.data.questions || quizData.data.questions.length === 0) {
+         alert("퀴즈를 생성할 수 없습니다. 처리된 곡이 없습니다.");
+         return;
+       }
+       // Reset local state
+       setLocalScore(0);
+       setSubmitted(false);
+       setShowResults(false);
+       setTimeLeft(20);
+       setOrdering([]);
+       setTextAnswer("");
+       streakRef.current = 0;
+       hasProcessedRevealRef.current = false;
+       
+       // Reset Redux state and set new questions
+       dispatch(resetQuiz());
+       dispatch(updateStreak(0));
+       dispatch(setQuizQuestions(quizData.data.questions.map((q: any, idx: number) => {
+         const options = q.wrongAnswers && q.wrongAnswers.length > 0
+           ? [q.correctAnswer, ...q.wrongAnswers].sort(() => Math.random() - 0.5)
+           : undefined;
+         const correctIndex = options ? options.indexOf(q.correctAnswer) : undefined;
+         return {
+           id: q.id || String(idx),
+           type: q.type || "lyrics_fill",
+           questionText: q.questionText,
+           options,
+           correctIndex,
+           correctAnswer: q.correctAnswer,
+           timeLimit: q.timeLimit || 10,
+           metadata: q.metadata,
+           lines: q.type === "lyrics_order" && q.wrongAnswers
+             ? q.wrongAnswers.map((text: string, i: number) => ({ idx: i, text })).sort(() => Math.random() - 0.5)
+             : undefined,
+         };
+       })));
+     } catch (e) {
+       console.error("Error restarting quiz:", e);
+       alert("퀴즈 재시작에 실패했습니다.");
+     } finally {
+       setIsRestarting(false);
+     }
+   };
+
+   const goToWaitingRoom = () => {
+     dispatch(setGameStatus("waiting"));
+   };
 
   const renderQuestionContent = () => {
     switch (currentQuestion.type) {
@@ -260,21 +314,21 @@ export default function LyricsQuizGame() {
               const isWrong = isAnswerRevealed && isSelected && index !== currentQuestion.correctIndex;
               const isOther = isAnswerRevealed && !isCorrect && !isWrong;
 
-              return (
-                <motion.button
-                  key={index}
-                  onClick={() => handleSelectAnswer(index)}
-                  disabled={submitted || isAnswerRevealed}
-                  whileHover={!submitted ? { scale: 1.02 } : {}}
-                  whileTap={!submitted ? { scale: 0.98 } : {}}
-                  className={`
-                    relative p-6 rounded-lg shadow-lg flex items-center gap-4 text-left overflow-hidden
-                    ${KAHOOT_COLORS[index].bg}
-                    ${isOther ? "opacity-40" : "opacity-100"}
-                    ${isSelected ? "ring-4 ring-white" : ""}
-                    transition-all duration-300
-                  `}
-                >
+               return (
+                 <motion.button
+                   key={index}
+                   onClick={() => handleSelectAnswer(index)}
+                   disabled={submitted || isAnswerRevealed}
+                   whileHover={!submitted ? { scale: 1.02 } : {}}
+                   whileTap={!submitted ? { scale: 0.98 } : {}}
+                   style={{ backgroundColor: KAHOOT_COLORS[index].bg }}
+                   className={`
+                     relative p-6 rounded-lg shadow-lg flex items-center gap-4 text-left overflow-hidden
+                     ${isOther ? "opacity-40" : "opacity-100"}
+                     ${isSelected ? "ring-4 ring-white" : ""}
+                     transition-all duration-300
+                   `}
+                 >
                   <div className="flex-shrink-0 w-12 h-12 bg-black/20 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-inner">
                     {KAHOOT_COLORS[index].shape}
                   </div>
@@ -483,14 +537,41 @@ export default function LyricsQuizGame() {
             </div>
           </div>
 
-          <div className="bg-white/10 rounded-2xl p-6 flex items-center justify-between">
-            <span className="text-xl text-white/80">내 점수</span>
-            <span className="text-4xl font-bold text-[#FFD700]">{localScore.toLocaleString()}점</span>
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
+           <div className="bg-white/10 rounded-2xl p-6 flex items-center justify-between">
+             <span className="text-xl text-white/80">내 점수</span>
+             <span className="text-4xl font-bold text-[#FFD700]">{localScore.toLocaleString()}점</span>
+           </div>
+
+           <div className="flex gap-4 mt-8">
+             <button
+               onClick={goToWaitingRoom}
+               className="flex-1 py-4 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-lg transition-colors flex items-center justify-center gap-2 border border-white/10"
+             >
+               <ArrowLeft className="w-5 h-5" />
+               대기실로
+             </button>
+             <button
+               onClick={restartQuiz}
+               disabled={isRestarting}
+               className="flex-1 py-4 rounded-xl bg-[#FFD700] hover:bg-[#FFC800] text-[#46178F] font-bold text-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+             >
+               {isRestarting ? (
+                 <>
+                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#46178F]"></div>
+                   생성 중...
+                 </>
+               ) : (
+                 <>
+                   <RotateCcw className="w-5 h-5" />
+                   다시 하기
+                 </>
+               )}
+             </button>
+           </div>
+         </motion.div>
+       </div>
+     );
+   }
 
   if (quizQuestions.length === 0) {
     return (

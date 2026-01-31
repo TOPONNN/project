@@ -181,36 +181,48 @@ const gameSlice = createSlice({
        state.isAnswerRevealed = true;
        state.roundResults = action.payload;
      },
-     updateStreak: (state, action: PayloadAction<number>) => {
-       state.streak = action.payload;
-       if (action.payload > state.maxStreak) {
-         state.maxStreak = action.payload;
-       }
-     },
-     resetGame: () => initialState,
+      updateStreak: (state, action: PayloadAction<number>) => {
+        state.streak = action.payload;
+        if (action.payload > state.maxStreak) {
+          state.maxStreak = action.payload;
+        }
+      },
+      resetQuiz: (state) => {
+        state.quizQuestions = [];
+        state.currentQuestionIndex = 0;
+        state.selectedAnswer = null;
+        state.isAnswerRevealed = false;
+        state.roundResults = [];
+        state.streak = 0;
+        state.maxStreak = 0;
+        state.myScore = 0;
+        state.scores = [];
+      },
+      resetGame: () => initialState,
   },
 });
 
 export const {
-   setGameMode,
-   setGameStatus,
-   setCurrentSong,
-   addToQueue,
-   removeFromQueue,
-   updateQueueItem,
-   playNextInQueue,
-   setQueue,
-   updateCurrentTime,
-   setCurrentLyricIndex,
-   updateScores,
-   updateMyScore,
-   updatePitch,
-   setQuizQuestions,
-   nextQuestion,
-   selectAnswer,
-   revealAnswer,
-   updateStreak,
-   resetGame,
+    setGameMode,
+    setGameStatus,
+    setCurrentSong,
+    addToQueue,
+    removeFromQueue,
+    updateQueueItem,
+    playNextInQueue,
+    setQueue,
+    updateCurrentTime,
+    setCurrentLyricIndex,
+    updateScores,
+    updateMyScore,
+    updatePitch,
+    setQuizQuestions,
+    nextQuestion,
+    selectAnswer,
+    revealAnswer,
+    updateStreak,
+    resetQuiz,
+    resetGame,
 } = gameSlice.actions;
 
 export default gameSlice.reducer;

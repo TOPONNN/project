@@ -110,12 +110,13 @@ export default function RoomPage() {
     hostId: string;
   } | null>(null);
   
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [showAddSong, setShowAddSong] = useState(false);
-  const [searching, setSearching] = useState(false);
-  const [mediaStatus, setMediaStatus] = useState({ isCameraOn: true, isMicOn: true });
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState("");
+   const [copied, setCopied] = useState(false);
+   const [showAddSong, setShowAddSong] = useState(false);
+   const [searching, setSearching] = useState(false);
+   const [mediaStatus, setMediaStatus] = useState({ isCameraOn: true, isMicOn: true });
+   const [isQuizLoading, setIsQuizLoading] = useState(false);
 
   useEffect(() => {
     const fetchRoom = async () => {
@@ -448,39 +449,42 @@ export default function RoomPage() {
     setMediaStatus(prev => ({ ...prev, isMicOn: !prev.isMicOn }));
   };
 
-  const startQuiz = async () => {
-    try {
-      const quizRes = await fetch(`/api/songs/quiz/generate?count=10`);
-      const quizData = await quizRes.json();
-      if (!quizData.success || !quizData.data.questions || quizData.data.questions.length === 0) {
-        alert("퀴즈를 생성할 수 없습니다. 처리된 곡이 없습니다.");
-        return;
-      }
-      dispatch(setQuizQuestions(quizData.data.questions.map((q: any, idx: number) => {
-        const options = q.wrongAnswers && q.wrongAnswers.length > 0
-          ? [q.correctAnswer, ...q.wrongAnswers].sort(() => Math.random() - 0.5)
-          : undefined;
-        const correctIndex = options ? options.indexOf(q.correctAnswer) : undefined;
-        return {
-          id: q.id || String(idx),
-          type: q.type || "lyrics_fill",
-          questionText: q.questionText,
-          options,
-          correctIndex,
-          correctAnswer: q.correctAnswer,
-          timeLimit: q.timeLimit || 10,
-          metadata: q.metadata,
-          lines: q.type === "lyrics_order" && q.wrongAnswers
-            ? q.wrongAnswers.map((text: string, i: number) => ({ idx: i, text })).sort(() => Math.random() - 0.5)
-            : undefined,
-        };
-      })));
-      dispatch(setGameStatus("playing"));
-    } catch (e) {
-      console.error("Error starting quiz:", e);
-      alert("퀴즈 시작에 실패했습니다.");
-    }
-  };
+   const startQuiz = async () => {
+     setIsQuizLoading(true);
+     try {
+       const quizRes = await fetch(`/api/songs/quiz/generate?count=10`);
+       const quizData = await quizRes.json();
+       if (!quizData.success || !quizData.data.questions || quizData.data.questions.length === 0) {
+         alert("퀴즈를 생성할 수 없습니다. 처리된 곡이 없습니다.");
+         return;
+       }
+       dispatch(setQuizQuestions(quizData.data.questions.map((q: any, idx: number) => {
+         const options = q.wrongAnswers && q.wrongAnswers.length > 0
+           ? [q.correctAnswer, ...q.wrongAnswers].sort(() => Math.random() - 0.5)
+           : undefined;
+         const correctIndex = options ? options.indexOf(q.correctAnswer) : undefined;
+         return {
+           id: q.id || String(idx),
+           type: q.type || "lyrics_fill",
+           questionText: q.questionText,
+           options,
+           correctIndex,
+           correctAnswer: q.correctAnswer,
+           timeLimit: q.timeLimit || 10,
+           metadata: q.metadata,
+           lines: q.type === "lyrics_order" && q.wrongAnswers
+             ? q.wrongAnswers.map((text: string, i: number) => ({ idx: i, text })).sort(() => Math.random() - 0.5)
+             : undefined,
+         };
+       })));
+       dispatch(setGameStatus("playing"));
+     } catch (e) {
+       console.error("Error starting quiz:", e);
+       alert("퀴즈 시작에 실패했습니다.");
+     } finally {
+       setIsQuizLoading(false);
+     }
+   };
 
   if (gameStatus === "playing" && (currentSong || room?.gameMode === "lyrics_quiz")) {
     return (
@@ -576,12 +580,20 @@ export default function RoomPage() {
             </div>
             <h2 className="text-3xl font-bold mb-3">노래 퀴즈</h2>
             <p className="text-gray-400 mb-8">6가지 퀴즈 유형으로 노래 실력을 겨뤄보세요!</p>
-            <button
-              onClick={startQuiz}
-              className="w-full py-4 rounded-xl bg-[#FF6B6B] text-black font-bold text-xl hover:bg-[#FF5252] transition-colors shadow-lg"
-            >
-              퀴즈 시작
-            </button>
+             <button
+               onClick={startQuiz}
+               disabled={isQuizLoading}
+               className="w-full py-4 rounded-xl bg-[#FF6B6B] text-black font-bold text-xl hover:bg-[#FF5252] transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+             >
+               {isQuizLoading ? (
+                 <>
+                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-black"></div>
+                   퀴즈 생성 중...
+                 </>
+               ) : (
+                 "퀴즈 시작"
+               )}
+             </button>
           </div>
         </main>
       ) : (
