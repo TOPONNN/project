@@ -7,31 +7,6 @@ import { roomService } from "../services/RoomService";
 import { RoomParticipant } from "../entities";
 import { redisPubSub } from "../services/RedisPubSubService";
 
-interface OnlineUser {
-  socketId: string;
-  nickname?: string;
-  profileImage?: string | null;
-  roomCode?: string;
-  gameMode?: string;
-  joinedAt: number;
-}
-
-const onlineUsers = new Map<string, OnlineUser>();
-
-export function getOnlineUsers() {
-  return {
-    count: onlineUsers.size,
-    users: Array.from(onlineUsers.values())
-      .map(u => ({
-        nickname: u.nickname,
-        profileImage: u.profileImage,
-        roomCode: u.roomCode,
-        gameMode: u.gameMode,
-      }))
-      .filter(u => u.nickname), // Only return users with nicknames
-  };
-}
-
 interface JoinRoomData {
   code: string;
   nickname?: string;
@@ -68,12 +43,6 @@ export function initializeSocket(httpServer: HttpServer): Server {
    io.on("connection", (socket: Socket) => {
      console.log(`Client connected: ${socket.id}`);
 
-     // Track online user
-     onlineUsers.set(socket.id, {
-       socketId: socket.id,
-       joinedAt: Date.now(),
-     });
-
     socket.on("room:join", async (data: JoinRoomData) => {
       try {
         const room = await roomService.getRoomByCode(data.code);
@@ -104,15 +73,6 @@ export function initializeSocket(httpServer: HttpServer): Server {
           // Get profile image for the joining participant
           const joiningParticipantWithUser = roomWithUsers?.participants.find((p: RoomParticipant) => p.id === participant.id);
           const profileImage = joiningParticipantWithUser?.user?.profileImage || null;
-          
-          onlineUsers.set(socket.id, {
-            socketId: socket.id,
-            nickname,
-            profileImage,
-            roomCode: data.code,
-            gameMode: room.gameMode,
-            joinedAt: onlineUsers.get(socket.id)?.joinedAt || Date.now(),
-          });
 
          const participantData = {
            id: participant.id,
@@ -259,7 +219,6 @@ export function initializeSocket(httpServer: HttpServer): Server {
     lyricsQuizHandler.registerEvents(socket);
 
      socket.on("disconnect", async () => {
-       onlineUsers.delete(socket.id);
        const { roomCode, participantId } = socket.data;
        if (roomCode && participantId) {
          await roomService.leaveRoom(roomCode, participantId);

@@ -2,22 +2,19 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Users } from "lucide-react";
+import { Users, X } from "lucide-react";
 
 interface OnlineUser {
   nickname: string;
   profileImage: string | null;
-  roomCode: string | null;
-  gameMode: string | null;
+  currentPage: string;
+  lastSeen: number;
 }
 
-const gameModeLabels: Record<string, { label: string; color: string }> = {
-  normal: { label: "일반", color: "#C0C0C0" },
-  perfect_score: { label: "퍼펙트", color: "#FFD700" },
-  lyrics_quiz: { label: "퀴즈", color: "#FF6B6B" },
-  battle: { label: "배틀", color: "#FF4500" },
-  duet: { label: "듀엣", color: "#9B59B6" },
-};
+interface OnlineData {
+  count: number;
+  users: OnlineUser[];
+}
 
 const avatarGradients = [
   'from-purple-500 to-pink-500',
@@ -28,10 +25,63 @@ const avatarGradients = [
 ];
 
 export default function OnlineIndicator() {
-  const [onlineData, setOnlineData] = useState<{ count: number; users: OnlineUser[] }>({ count: 0, users: [] });
+  const [onlineData, setOnlineData] = useState<OnlineData>({ count: 0, users: [] });
   const [expanded, setExpanded] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+    
+    // 1. Initialize Visitor ID
+    let visitorId = localStorage.getItem("visitorId");
+    if (!visitorId) {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        visitorId = crypto.randomUUID();
+      } else {
+        // Fallback for older browsers
+        visitorId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+          const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
+      }
+      localStorage.setItem("visitorId", visitorId);
+    }
+
+    const sendHeartbeat = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const userStr = localStorage.getItem("user");
+        let user = null;
+        try {
+          user = userStr ? JSON.parse(userStr) : null;
+        } catch {
+          // ignore invalid json
+        }
+
+        const payload = {
+          visitorId,
+          nickname: user?.name || "게스트",
+          profileImage: user?.profileImage || null,
+          currentPage: window.location.pathname
+        };
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json"
+        };
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+
+        await fetch('/api/online/heartbeat', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload)
+        });
+      } catch {
+        // Silent fail
+      }
+    };
+
     const fetchOnline = async () => {
       try {
         const res = await fetch('/api/online');
@@ -40,16 +90,33 @@ export default function OnlineIndicator() {
           setOnlineData(data.data);
         }
       } catch {
-        // Silently fail on error
+        // Silent fail
       }
     };
-    
+
+    sendHeartbeat();
     fetchOnline();
-    const interval = setInterval(fetchOnline, 5000);
-    return () => clearInterval(interval);
+
+    const heartbeatInterval = setInterval(sendHeartbeat, 10000);
+    const fetchInterval = setInterval(fetchOnline, 5000);
+
+    return () => {
+      clearInterval(heartbeatInterval);
+      clearInterval(fetchInterval);
+    };
   }, []);
 
-  if (onlineData.count === 0) return null;
+  const getPageName = (path: string) => {
+    if (path === '/') return '메인';
+    if (path === '/lobby') return '로비';
+    if (path.startsWith('/room/')) return '방';
+    if (path === '/login') return '로그인';
+    if (path === '/signup') return '회원가입';
+    if (path.startsWith('/mode/')) return '모드 선택';
+    return '탐색 중';
+  };
+
+  if (!mounted) return null;
 
   return (
     <motion.div
@@ -88,7 +155,7 @@ export default function OnlineIndicator() {
           )}
         </div>
         
-        <span className="text-sm font-medium text-white/80">{onlineData.count}명</span>
+        <span className="text-sm font-medium text-white/80">{onlineData.count}명 접속 중</span>
       </motion.div>
 
       <AnimatePresence>
@@ -99,10 +166,15 @@ export default function OnlineIndicator() {
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
             className="absolute bottom-full right-0 mb-2 w-72 bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
           >
-            <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
-              <Users className="w-4 h-4 text-white/60" />
-              <span className="text-sm font-bold text-white/80">접속 중</span>
-              <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full font-bold">{onlineData.count}</span>
+            <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-white/60" />
+                <span className="text-sm font-bold text-white/80">접속 중</span>
+                <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full font-bold">{onlineData.count}</span>
+              </div>
+              <button onClick={(e) => { e.stopPropagation(); setExpanded(false); }} className="text-white/40 hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+              </button>
             </div>
             <div className="max-h-64 overflow-y-auto p-2 space-y-1">
               {onlineData.users.map((user, i) => (
@@ -116,16 +188,21 @@ export default function OnlineIndicator() {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium text-white truncate block">{user.nickname}</span>
-                    {user.gameMode && gameModeLabels[user.gameMode] && (
-                      <span className="text-[10px] font-bold" style={{ color: gameModeLabels[user.gameMode].color }}>
-                        {gameModeLabels[user.gameMode].label} 플레이 중
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-white truncate">{user.nickname}</span>
+                    </div>
+                    <span className="text-xs text-white/40 truncate block">
+                      {getPageName(user.currentPage)}
+                    </span>
                   </div>
-                  <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
+                  <div className="w-2 h-2 rounded-full bg-green-400 shrink-0 shadow-[0_0_8px_rgba(74,222,128,0.5)]" />
                 </div>
               ))}
+              {onlineData.users.length === 0 && (
+                <div className="text-center py-8 text-white/30 text-xs">
+                  접속자 정보를 불러오는 중...
+                </div>
+              )}
             </div>
           </motion.div>
         )}

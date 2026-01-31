@@ -5,7 +5,9 @@ import http from "http";
 import dotenv from "dotenv";
 import { AppDataSource } from "./config/database";
 import { connectRabbitMQ } from "./config/rabbitmq";
-import { initializeSocket, getOnlineUsers } from "./socket";
+import { initializeSocket } from "./socket";
+import jwt from "jsonwebtoken";
+import { redis } from "./config/redis";
 import authRoutes from "./routes/auth";
 import roomRoutes from "./routes/rooms";
 import songRoutes from "./routes/songs";
@@ -31,9 +33,68 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-app.get("/api/online", (req, res) => {
-  const data = getOnlineUsers();
-  res.json({ success: true, data });
+// Heartbeat - frontend sends every 10s to register as online
+app.post("/api/online/heartbeat", async (req, res) => {
+  try {
+    const { visitorId, nickname, profileImage, currentPage } = req.body;
+    if (!visitorId) {
+      return res.status(400).json({ success: false, message: "visitorId required" });
+    }
+    
+    // Try to extract userId from JWT if present
+    let userId: string | undefined;
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret") as { userId: string };
+        userId = decoded.userId;
+      } catch {}
+    }
+    
+    const key = `online:${userId || visitorId}`;
+    const data = { visitorId, userId, nickname, profileImage, currentPage, lastSeen: Date.now() };
+    await redis.setex(key, 15, JSON.stringify(data));
+    
+    res.json({ success: true });
+  } catch {
+    res.json({ success: true });
+  }
+});
+
+// Get all online visitors
+app.get("/api/online", async (req, res) => {
+  try {
+    const keys = await redis.keys("online:*");
+    if (keys.length === 0) {
+      return res.json({ success: true, data: { count: 0, users: [] } });
+    }
+    
+    const values = await redis.mget(...keys);
+    const users: Array<{ nickname?: string; profileImage?: string | null; currentPage?: string; lastSeen: number }> = [];
+    const seen = new Set<string>();
+    
+    for (const val of values) {
+      if (!val) continue;
+      try {
+        const parsed = JSON.parse(val);
+        // Deduplicate by visitorId or userId
+        const dedupeKey = parsed.userId || parsed.visitorId;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        users.push({
+          nickname: parsed.nickname,
+          profileImage: parsed.profileImage,
+          currentPage: parsed.currentPage,
+          lastSeen: parsed.lastSeen,
+        });
+      } catch {}
+    }
+    
+    res.json({ success: true, data: { count: users.length, users } });
+  } catch {
+    res.json({ success: true, data: { count: 0, users: [] } });
+  }
 });
 
 const PORT = process.env.PORT || 4000;
