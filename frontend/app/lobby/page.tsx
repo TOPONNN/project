@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { 
   Music, Target, MessageSquareText, Swords, Zap, ArrowLeft, Plus, Users, 
-  Search, Loader2, DoorOpen, Lock, Globe, RefreshCw, Trash2
+  Search, Loader2, DoorOpen, Lock, Globe, RefreshCw, Trash2, Dices
 } from "lucide-react";
 
 const modeConfig = {
@@ -30,6 +30,15 @@ interface Room {
 }
 
 function LobbyContent() {
+  const funRoomNames = [
+    "노래방 천국 🎤", "음치 금지 구역 🚫", "마이크 쟁탈전 🎙️", 
+    "숨겨진 보컬리스트 ✨", "떼창 파티 🎉", "고음 불가 지대 💀",
+    "나는야 가수왕 👑", "음정 파괴자들 💣", "가요계 레전드 🏆",
+    "원키 도전 🔥", "코노 가자 🚗", "반주 틀어줘 🎹",
+    "최고 음역대 🎶", "볼륨 업 🔊", "앵콜 앵콜 👏",
+    "싱잉 번개 ⚡", "노래 한판 승부 ⚔️", "멜로디 메이커 🎼",
+  ];
+
   const router = useRouter();
   const searchParams = useSearchParams();
   const mode = searchParams.get("mode") as "normal" | "perfect_score" | "lyrics_quiz" | "battle" | "duet" | null;
@@ -48,12 +57,17 @@ function LobbyContent() {
   const [roomName, setRoomName] = useState("");
   const [nickname, setNickname] = useState("");
   const [selectedMode, setSelectedMode] = useState<"normal" | "perfect_score" | "lyrics_quiz" | "battle" | "duet">(mode || "normal");
+  const [maxParticipants, setMaxParticipants] = useState(6);
   const [isPrivate, setIsPrivate] = useState(false);
   const [joinCode, setJoinCode] = useState("");
 
   useEffect(() => {
     if (mode) setSelectedMode(mode);
   }, [mode]);
+
+  const generateRandomName = () => {
+    setRoomName(funRoomNames[Math.floor(Math.random() * funRoomNames.length)]);
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -126,7 +140,7 @@ function LobbyContent() {
           name: roomName,
           gameMode: selectedMode,
           hostId: userId,
-          maxParticipants: 8,
+          maxParticipants,
           isPrivate,
         }),
       });
@@ -432,76 +446,91 @@ function LobbyContent() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-md bg-zinc-900 border border-white/10 rounded-2xl p-6"
+              className="w-full max-w-md bg-zinc-900/95 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl ring-1 ring-white/5"
               onClick={(e) => e.stopPropagation()}
             >
-              <h2 className="text-2xl font-bold mb-6">방 만들기</h2>
+              <h2 className="text-2xl font-bold mb-2">방 만들기</h2>
+              <p className="text-sm text-gray-500 mb-6">새로운 노래방을 만들고 친구를 초대하세요</p>
               
-              <div className="space-y-6">
+              <div className="flex items-center gap-4 p-4 rounded-2xl mb-6" style={{ backgroundColor: `${modeConfig[selectedMode].color}15` }}>
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${modeConfig[selectedMode].color}25` }}>
+                  {(() => { const ModeIcon = modeConfig[selectedMode].icon; return <ModeIcon className="w-6 h-6" style={{ color: modeConfig[selectedMode].color }} />; })()}
+                </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">게임 모드</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {Object.entries(modeConfig).map(([key, cfg]) => (
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">게임 모드</p>
+                  <p className="text-lg font-bold" style={{ color: modeConfig[selectedMode].color }}>{modeConfig[selectedMode].title}</p>
+                </div>
+              </div>
+
+              <div className="space-y-5">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">닉네임</label>
+                  <input
+                    type="text"
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    placeholder="닉네임"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-white/30 focus:bg-white/10 transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">방 이름</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={roomName}
+                      onChange={(e) => setRoomName(e.target.value)}
+                      placeholder="방 이름을 입력하세요"
+                      className="w-full px-4 py-3 pr-12 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-white/30 focus:bg-white/10 transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={generateRandomName}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg hover:bg-white/10 transition-colors text-gray-400 hover:text-white"
+                      title="랜덤 이름 생성"
+                    >
+                      <Dices className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">최대 인원</label>
+                  <div className="flex items-center gap-3">
+                    {[2, 3, 4, 5, 6].map((num) => (
                       <button
-                        key={key}
-                        onClick={() => setSelectedMode(key as any)}
-                        className={`flex items-center gap-2 p-3 rounded-xl border transition-all ${
-                          selectedMode === key
-                            ? "bg-white/10 border-white/40 shadow-[0_0_15px_-5px_rgba(255,255,255,0.3)]"
-                            : "bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10"
+                        key={num}
+                        onClick={() => setMaxParticipants(num)}
+                        className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all border ${
+                          maxParticipants === num
+                            ? "border-white/40 bg-white/15 text-white shadow-lg"
+                            : "border-white/5 bg-white/5 text-gray-500 hover:bg-white/10 hover:text-gray-300"
                         }`}
+                        style={maxParticipants === num ? { 
+                          borderColor: `${modeConfig[selectedMode].color}60`,
+                          boxShadow: `0 0 15px -5px ${modeConfig[selectedMode].color}40`
+                        } : {}}
                       >
-                        <div 
-                          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                          style={{ backgroundColor: `${cfg.color}20` }}
-                        >
-                          <cfg.icon className="w-4 h-4" style={{ color: cfg.color }} />
-                        </div>
-                        <span className={`text-sm font-bold ${
-                          selectedMode === key ? "text-white" : "text-gray-400"
-                        }`}>
-                          {cfg.title}
-                        </span>
+                        {num}명
                       </button>
                     ))}
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">방 설정</label>
-                    <div className="space-y-3">
-                      <input
-                        type="text"
-                        value={nickname}
-                        onChange={(e) => setNickname(e.target.value)}
-                        placeholder="닉네임"
-                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-white/30 focus:bg-white/10 transition-colors"
-                      />
-                      <input
-                        type="text"
-                        value={roomName}
-                        onChange={(e) => setRoomName(e.target.value)}
-                        placeholder="방 이름"
-                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-white/30 focus:bg-white/10 transition-colors"
-                      />
-                    </div>
+                <button
+                  onClick={() => setIsPrivate(!isPrivate)}
+                  className="flex items-center gap-3 w-full p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors"
+                >
+                  <div className={`w-10 h-6 rounded-full transition-colors relative ${
+                    isPrivate ? "bg-yellow-500" : "bg-white/20"
+                  }`}>
+                    <div className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                      isPrivate ? "translate-x-4" : "translate-x-0"
+                    }`} />
                   </div>
-
-                  <button
-                    onClick={() => setIsPrivate(!isPrivate)}
-                    className="flex items-center gap-3 w-full p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors"
-                  >
-                    <div className={`w-10 h-6 rounded-full transition-colors relative ${
-                      isPrivate ? "bg-yellow-500" : "bg-white/20"
-                    }`}>
-                      <div className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                        isPrivate ? "translate-x-4" : "translate-x-0"
-                      }`} />
-                    </div>
-                    <span className="text-sm font-medium text-gray-300">비공개 방으로 만들기</span>
-                  </button>
-                </div>
+                  <span className="text-sm font-medium text-gray-300">비공개 방으로 만들기</span>
+                </button>
 
                 <button
                   onClick={createRoom}
