@@ -450,58 +450,58 @@ export class SongService {
     if (tjSongs.length >= 4) {
       const shuffledTJ = shuffle(tjSongs);
 
-        const titleCount = Math.ceil(count * 0.4);
-        for (let i = 0; i < Math.min(titleCount, shuffledTJ.length); i++) {
-         const song = shuffledTJ[i];
-         const otherTitles = shuffle(
-           tjSongs.filter(s => s.title !== song.title).map(s => cleanTitle(s.title))
-         ).slice(0, 3);
-         if (otherTitles.length < 3) continue;
-         tjQuestions.push({
-           type: "title_guess",
-           questionText: `이 노래의 제목은? (가수: ${cleanTitle(song.artist)})`,
-           correctAnswer: cleanTitle(song.title),
-           wrongAnswers: otherTitles,
-           timeLimit: 30,
-           points: 1000,
-           metadata: { source: "tj", tjNumber: song.number },
-         });
-       }
-
-        const artistCount = Math.ceil(count * 0.35);
-        for (let i = titleCount; i < Math.min(titleCount + artistCount, shuffledTJ.length); i++) {
-         const song = shuffledTJ[i];
-         const uniqueArtists = [...new Set(tjSongs.filter(s => s.artist !== song.artist).map(s => cleanTitle(s.artist)))];
-         const otherArtists = shuffle(uniqueArtists).slice(0, 3);
-         if (otherArtists.length < 3) continue;
-         tjQuestions.push({
-           type: "artist_guess",
-           questionText: `'${cleanTitle(song.title)}'을(를) 부른 가수는?`,
-           correctAnswer: cleanTitle(song.artist),
-           wrongAnswers: otherArtists,
-           timeLimit: 25,
-           points: 1000,
-           metadata: { source: "tj", tjNumber: song.number },
-         });
-       }
-
-        const initialCount = Math.ceil(count * 0.25);
-        const initialStart = titleCount + artistCount;
-        for (let i = initialStart; i < Math.min(initialStart + initialCount, shuffledTJ.length); i++) {
-         const song = shuffledTJ[i];
-         const cleaned = cleanTitle(song.title);
-         const initials = getKoreanInitials(cleaned);
-         if (initials === cleaned) continue;
-         tjQuestions.push({
-           type: "initial_guess",
-           questionText: initials,
-           correctAnswer: cleaned,
-           wrongAnswers: [],
-           timeLimit: 30,
-           points: 1000,
-           metadata: { source: "tj", tjNumber: song.number, hint: `${cleanTitle(song.artist)}의 노래, ${cleaned.length}글자` },
-         });
+         const titleCount = Math.ceil(count * 0.4);
+         for (let i = 0; i < Math.min(titleCount, shuffledTJ.length); i++) {
+          const song = shuffledTJ[i];
+          const otherTitles = shuffle(
+            tjSongs.filter(s => s.title !== song.title).map(s => cleanTitle(s.title))
+          ).slice(0, 5);
+          if (otherTitles.length < 5) continue;
+          tjQuestions.push({
+            type: "title_guess",
+            questionText: `이 노래의 제목은? (가수: ${cleanTitle(song.artist)})`,
+            correctAnswer: cleanTitle(song.title),
+            wrongAnswers: otherTitles,
+            timeLimit: 20,
+            points: 1000,
+            metadata: { source: "tj", tjNumber: song.number },
+          });
         }
+
+         const artistCount = Math.ceil(count * 0.35);
+         for (let i = titleCount; i < Math.min(titleCount + artistCount, shuffledTJ.length); i++) {
+          const song = shuffledTJ[i];
+          const uniqueArtists = [...new Set(tjSongs.filter(s => s.artist !== song.artist).map(s => cleanTitle(s.artist)))];
+          const otherArtists = shuffle(uniqueArtists).slice(0, 5);
+          if (otherArtists.length < 5) continue;
+          tjQuestions.push({
+            type: "artist_guess",
+            questionText: `'${cleanTitle(song.title)}'을(를) 부른 가수는?`,
+            correctAnswer: cleanTitle(song.artist),
+            wrongAnswers: otherArtists,
+            timeLimit: 15,
+            points: 1000,
+            metadata: { source: "tj", tjNumber: song.number },
+          });
+        }
+
+         const initialCount = Math.ceil(count * 0.25);
+         const initialStart = titleCount + artistCount;
+         for (let i = initialStart; i < Math.min(initialStart + initialCount, shuffledTJ.length); i++) {
+          const song = shuffledTJ[i];
+          const cleaned = cleanTitle(song.title);
+          const initials = getKoreanInitials(cleaned);
+          if (initials === cleaned) continue;
+          tjQuestions.push({
+            type: "initial_guess",
+            questionText: initials,
+            correctAnswer: cleaned,
+            wrongAnswers: [],
+            timeLimit: 20,
+            points: 1000,
+            metadata: { source: "tj", tjNumber: song.number, hint: `${cleanTitle(song.artist)}의 노래, ${cleaned.length}글자` },
+          });
+         }
      }
 
       const audioQuestions = tjQuestions.filter(q => q.type === "title_guess" || q.type === "artist_guess");

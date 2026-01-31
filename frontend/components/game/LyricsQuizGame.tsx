@@ -13,6 +13,8 @@ const KAHOOT_COLORS = [
   { bg: "#1368CE", ring: "ring-[#1368CE]", shape: "◆", name: "blue" },
   { bg: "#D89E00", ring: "ring-[#D89E00]", shape: "●", name: "yellow" },
   { bg: "#26890C", ring: "ring-[#26890C]", shape: "■", name: "green" },
+  { bg: "#9B59B6", ring: "ring-[#9B59B6]", shape: "★", name: "purple" },
+  { bg: "#E67E22", ring: "ring-[#E67E22]", shape: "⬡", name: "orange" },
 ];
 
 const TimerCircle = ({ timeLeft, timeLimit }: { timeLeft: number; timeLimit: number }) => {
@@ -419,7 +421,7 @@ export default function LyricsQuizGame() {
       case "title_guess":
       case "artist_guess":
         return (
-          <div className="grid grid-cols-2 gap-4 w-full h-full">
+          <div className="grid grid-cols-3 gap-3 w-full h-full">
             {currentQuestion.options?.map((option, index) => {
               const isSelected = selectedAnswer === index;
               const isCorrect = isAnswerRevealed && index === currentQuestion.correctIndex;
@@ -435,16 +437,16 @@ export default function LyricsQuizGame() {
                    whileTap={!submitted ? { scale: 0.98 } : {}}
                    style={{ backgroundColor: KAHOOT_COLORS[index].bg }}
                    className={`
-                     relative p-6 rounded-lg shadow-lg flex items-center gap-4 text-left overflow-hidden
+                     relative p-4 rounded-lg shadow-lg flex items-center gap-3 text-left overflow-hidden
                      ${isOther ? "opacity-40" : "opacity-100"}
                      ${isSelected ? "ring-4 ring-white" : ""}
                      transition-all duration-300
                    `}
                  >
-                  <div className="flex-shrink-0 w-12 h-12 bg-black/20 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-inner">
+                  <div className="flex-shrink-0 w-10 h-10 bg-black/20 rounded-full flex items-center justify-center text-xl font-bold text-white shadow-inner">
                     {KAHOOT_COLORS[index].shape}
                   </div>
-                   <span className="text-xl font-bold text-white drop-shadow-md leading-tight">{cleanDisplay(option)}</span>
+                   <span className="text-base font-bold text-white drop-shadow-md leading-tight">{cleanDisplay(option)}</span>
                   
                   {isCorrect && (
                     <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute top-2 right-2">
