@@ -109,6 +109,22 @@ export function useSocket(roomCode: string | null) {
       dispatch(setGameStatus("playing"));
     });
 
+    socket.on("quiz:force-advance", (data: { questionIndex: number; totalQuestions: number; answeredBy: string; answeredById: string; correctAnswer: string; points: number }) => {
+      dispatch(revealAnswer([{
+        odId: data.answeredById || "remote",
+        odName: data.answeredBy || "누군가",
+        isCorrect: true,
+        points: data.points || 0,
+      }]));
+      setTimeout(() => {
+        if (data.questionIndex >= data.totalQuestions - 1) {
+          dispatch(setGameStatus("finished"));
+        } else {
+          dispatch(nextQuestion());
+        }
+      }, 1500);
+    });
+
     // Queue synchronization listeners
     socket.on("queue:song-added", (song: any) => {
       dispatch(addToQueue(song));

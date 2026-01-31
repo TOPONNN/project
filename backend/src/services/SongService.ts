@@ -445,10 +445,33 @@ export class SongService {
           points: 1000,
           metadata: { source: "tj", tjNumber: song.number, hint: `${song.artist}의 노래, ${song.title.length}글자` },
         });
-      }
-    }
+       }
+     }
 
-    // 5. Mix DB + TJ questions and return
+     // 4.5 Add YouTube video IDs to TJ TITLE_GUESS questions for audio playback
+     const titleGuessQuestions = tjQuestions.filter(q => q.type === "title_guess");
+     if (titleGuessQuestions.length > 0) {
+       try {
+         const searchResults = await Promise.all(
+           titleGuessQuestions.map(q => {
+             // Extract artist from questionText: "이 노래의 제목은? (가수: ARTIST)"
+             const artistMatch = q.questionText.match(/가수:\s*(.+?)\)/);
+             const artist = artistMatch ? artistMatch[1] : "";
+             return youtubeService.searchVideos(`${q.correctAnswer} ${artist}`, 1).catch(() => []);
+           })
+         );
+         titleGuessQuestions.forEach((q, idx) => {
+           const videos = searchResults[idx];
+           if (videos && videos.length > 0) {
+             q.metadata = { ...q.metadata, youtubeVideoId: videos[0].videoId };
+           }
+         });
+       } catch (e) {
+         console.error("Failed to fetch YouTube videos for TJ quiz:", e);
+       }
+     }
+
+     // 5. Mix DB + TJ questions and return
     const allQuestions = shuffle([...dbQuestions, ...tjQuestions]);
     return allQuestions.slice(0, count);
   }

@@ -68,9 +68,11 @@ export default function LyricsQuizGame() {
    const hasProcessedRevealRef = useRef(false);
    const streakRef = useRef(streak);
    const audioRef = useRef<HTMLAudioElement | null>(null);
+   const questionIndexRef = useRef(currentQuestionIndex);
     
    const [ordering, setOrdering] = useState<number[]>([]);
    const [textAnswer, setTextAnswer] = useState("");
+   const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null);
 
   const currentQuestion = quizQuestions[currentQuestionIndex];
 
@@ -124,11 +126,8 @@ export default function LyricsQuizGame() {
 
   // Audio playback for title_guess / artist_guess questions
   useEffect(() => {
-    if (!currentQuestion) return;
-    
-    const audioUrl = currentQuestion.metadata?.audioUrl;
-    if (!audioUrl) {
-      // Stop any playing audio
+    if (!currentQuestion) {
+      setYoutubeVideoId(null);
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
@@ -136,25 +135,52 @@ export default function LyricsQuizGame() {
       return;
     }
     
-    const audio = new Audio(audioUrl);
-    audioRef.current = audio;
+    const audioUrl = currentQuestion.metadata?.audioUrl;
+    const ytVideoId = currentQuestion.metadata?.youtubeVideoId;
     
-    // If there's a start time in metadata, seek to it
-    const startTime = currentQuestion.metadata?.audioStartTime || 0;
-    audio.currentTime = startTime;
-    audio.volume = 0.5;
-    audio.play().catch(() => {}); // Ignore autoplay errors
-    
-    return () => {
-      audio.pause();
-      audio.src = '';
-      audioRef.current = null;
-    };
+    if (audioUrl) {
+      // DB song with direct audio URL
+      setYoutubeVideoId(null);
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+      const startTime = currentQuestion.metadata?.audioStartTime || 0;
+      audio.currentTime = startTime;
+      audio.volume = 0.5;
+      audio.play().catch(() => {});
+      
+      return () => {
+        audio.pause();
+        audio.src = '';
+        audioRef.current = null;
+      };
+    } else if (ytVideoId) {
+      // TJ song with YouTube video ID - use iframe
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      setYoutubeVideoId(ytVideoId);
+      
+      return () => {
+        setYoutubeVideoId(null);
+      };
+    } else {
+      // No audio available
+      setYoutubeVideoId(null);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    }
   }, [currentQuestionIndex, currentQuestion]);
 
   useEffect(() => {
     streakRef.current = streak;
   }, [streak]);
+
+  useEffect(() => {
+    questionIndexRef.current = currentQuestionIndex;
+  }, [currentQuestionIndex]);
 
   useEffect(() => {
     if (isAnswerRevealed && !hasProcessedRevealRef.current) {
@@ -173,12 +199,16 @@ export default function LyricsQuizGame() {
 
       const advanceDelay = myResult?.isCorrect ? 2000 : 4000;
 
+      const capturedIndex = currentQuestionIndex;
       const timeout = setTimeout(() => {
+        // If socket already advanced us past this question, skip
+        if (questionIndexRef.current !== capturedIndex) return;
         setShowResults(false);
         if (audioRef.current) {
           audioRef.current.pause();
           audioRef.current = null;
         }
+        setYoutubeVideoId(null);
         if (currentQuestionIndex < quizQuestions.length - 1) {
           dispatch(nextQuestion());
         } else {
@@ -199,6 +229,7 @@ export default function LyricsQuizGame() {
      if (audioRef.current) {
        audioRef.current.pause();
      }
+     setYoutubeVideoId(null);
      dispatch(selectAnswer(index));
      
      let answerValue: any = "";
@@ -238,6 +269,7 @@ export default function LyricsQuizGame() {
      if (audioRef.current) {
        audioRef.current.pause();
      }
+     setYoutubeVideoId(null);
       
       const correctOrder = currentQuestion.correctOrder || [0, 1, 2, 3];
      const isCorrect = JSON.stringify(ordering) === JSON.stringify(correctOrder);
@@ -267,6 +299,7 @@ export default function LyricsQuizGame() {
      if (audioRef.current) {
        audioRef.current.pause();
      }
+     setYoutubeVideoId(null);
 
      const normalize = (s: string) => s.replace(/\s*[\(（\[].*?[\)）\]]/g, '').replace(/\s/g, '').toLowerCase();
      const isCorrect = normalize(textAnswer.trim()) === normalize(currentQuestion.correctAnswer || "");
@@ -662,6 +695,16 @@ export default function LyricsQuizGame() {
 
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-[#46178F] to-[#1D0939] pl-16 pr-56 font-sans">
+      {/* Hidden YouTube audio player for TJ songs */}
+      {youtubeVideoId && (
+        <iframe
+          key={youtubeVideoId}
+          src={`https://www.youtube.com/embed/${youtubeVideoId}?autoplay=1&start=30&controls=0&showinfo=0&rel=0&modestbranding=1`}
+          allow="autoplay"
+          className="absolute w-1 h-1 opacity-0 pointer-events-none"
+          title="quiz-audio"
+        />
+      )}
       <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
 
       <div className="relative z-10 flex items-center justify-between h-24 px-8 border-b border-white/10">

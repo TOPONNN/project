@@ -9,6 +9,7 @@ interface QuizState {
   answers: Map<number, { participantId: number; answer: any; time: number }[]>;
   streaks: Map<number, number>;
   scores: Map<number, number>;
+  answeredQuestions: Set<number>;
 }
 
 export class LyricsQuizHandler {
@@ -46,6 +47,21 @@ export class LyricsQuizHandler {
         const currentScore = state.scores.get(socket.data.participantId) || 0;
         state.scores.set(socket.data.participantId, currentScore + points);
         await roomService.updateParticipantScore(socket.data.participantId, points);
+
+        // If this question hasn't been answered correctly yet, broadcast force-advance
+        if (!state.answeredQuestions.has(data.questionIndex)) {
+          state.answeredQuestions.add(data.questionIndex);
+
+          // Tell all OTHER clients to advance to next question
+          socket.to(data.roomCode).emit("quiz:force-advance", {
+            questionIndex: data.questionIndex,
+            totalQuestions: state.questions.length,
+            answeredBy: socket.data.nickname || "누군가",
+            answeredById: socket.data.participantId,
+            correctAnswer: question.correctAnswer,
+            points,
+          });
+        }
       }
 
       socket.emit("quiz:answer-result", {
@@ -97,6 +113,7 @@ export class LyricsQuizHandler {
       answers: new Map(),
       streaks: new Map(),
       scores: new Map(),
+      answeredQuestions: new Set(),
     };
     this.quizStates.set(roomCode, state);
 
