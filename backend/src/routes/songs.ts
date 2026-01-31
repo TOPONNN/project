@@ -149,7 +149,7 @@ router.get("/random-mv", async (req: Request, res: Response) => {
     }
     
     const randomSong = tjSongs[Math.floor(Math.random() * tjSongs.length)];
-    const searchQuery = `${randomSong.artist} ${randomSong.title} MV`;
+     const searchQuery = `${randomSong.artist} ${randomSong.title} 공식 MV 4K`;
     const results = await youtubeService.searchVideos(searchQuery, 1);
     
     if (results.length === 0) {

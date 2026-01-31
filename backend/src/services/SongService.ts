@@ -5,6 +5,7 @@ import { publishMessage, QUEUES } from "../config/rabbitmq";
 import { v4 as uuidv4 } from "uuid";
 import { youtubeService } from "./YouTubeService";
 import { tjKaraokeService } from "./TJKaraokeService";
+import { redis } from "../config/redis";
 
 const songRepository = AppDataSource.getRepository(Song);
 const lyricsRepository = AppDataSource.getRepository(LyricsLine);
@@ -355,10 +356,19 @@ export class SongService {
   }
 
   async generateTJEnhancedQuiz(count: number = 10): Promise<any[]> {
-    // 1. Get TJ chart songs for quiz material
+    // 1. Get TJ chart songs for quiz material (Redis-cached)
     let tjSongs: { number: string; title: string; artist: string }[] = [];
     try {
-      tjSongs = await tjKaraokeService.searchPopular("monthly", "KOR", 100);
+      const cacheKey = "tj:chart:monthly";
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        tjSongs = JSON.parse(cached);
+      } else {
+        tjSongs = await tjKaraokeService.searchPopular("monthly", "KOR", 100);
+        if (tjSongs.length > 0) {
+          await redis.setex(cacheKey, 3600, JSON.stringify(tjSongs));
+        }
+      }
     } catch (e) {
       console.error("Failed to fetch TJ chart:", e);
     }
@@ -381,8 +391,8 @@ export class SongService {
     if (tjSongs.length >= 4) {
       const shuffledTJ = shuffle(tjSongs);
 
-        // TITLE_GUESS from TJ (up to 12)
-        for (let i = 0; i < Math.min(12, shuffledTJ.length); i++) {
+        const titleCount = Math.ceil(count * 0.4);
+        for (let i = 0; i < Math.min(titleCount, shuffledTJ.length); i++) {
          const song = shuffledTJ[i];
          const otherTitles = shuffle(
            tjSongs.filter(s => s.title !== song.title).map(s => cleanTitle(s.title))
@@ -399,8 +409,8 @@ export class SongService {
          });
        }
 
-        // ARTIST_GUESS from TJ (up to 12)
-        for (let i = 12; i < Math.min(24, shuffledTJ.length); i++) {
+        const artistCount = Math.ceil(count * 0.35);
+        for (let i = titleCount; i < Math.min(titleCount + artistCount, shuffledTJ.length); i++) {
          const song = shuffledTJ[i];
          const uniqueArtists = [...new Set(tjSongs.filter(s => s.artist !== song.artist).map(s => cleanTitle(s.artist)))];
          const otherArtists = shuffle(uniqueArtists).slice(0, 3);
@@ -416,8 +426,9 @@ export class SongService {
          });
        }
 
-        // INITIAL_GUESS from TJ (up to 8)
-        for (let i = 24; i < Math.min(32, shuffledTJ.length); i++) {
+        const initialCount = Math.ceil(count * 0.25);
+        const initialStart = titleCount + artistCount;
+        for (let i = initialStart; i < Math.min(initialStart + initialCount, shuffledTJ.length); i++) {
          const song = shuffledTJ[i];
          const cleaned = cleanTitle(song.title);
          const initials = getKoreanInitials(cleaned);
@@ -434,28 +445,31 @@ export class SongService {
         }
      }
 
-      // 4.5 Add YouTube video IDs to TJ TITLE_GUESS and ARTIST_GUESS questions for audio playback
       const audioQuestions = tjQuestions.filter(q => q.type === "title_guess" || q.type === "artist_guess");
-      if (audioQuestions.length > 0) {
+      const questionsToSearch = audioQuestions.slice(0, 10);
+      if (questionsToSearch.length > 0) {
         try {
           const searchResults = await Promise.all(
-            audioQuestions.map(q => {
+            questionsToSearch.map(async (q) => {
               let searchQuery = "";
               if (q.type === "title_guess") {
-                // Extract artist from questionText: "이 노래의 제목은? (가수: ARTIST)"
                 const artistMatch = q.questionText.match(/가수:\s*(.+?)\)/);
                 const artist = artistMatch ? artistMatch[1] : "";
                 searchQuery = `${q.correctAnswer} ${artist}`;
               } else {
-                // artist_guess — extract title from questionText: "'TITLE'을(를) 부른 가수는?"
                 const titleMatch = q.questionText.match(/^'(.+?)'/);
                 const title = titleMatch ? titleMatch[1] : q.correctAnswer;
                 searchQuery = `${title} ${q.correctAnswer}`;
               }
-              return youtubeService.searchVideos(searchQuery, 1).catch(() => []);
+              const ytCacheKey = `yt:mv:${searchQuery}`;
+              const cached = await redis.get(ytCacheKey);
+              if (cached) return JSON.parse(cached);
+              const videos = await youtubeService.searchVideos(searchQuery, 1).catch(() => []);
+              if (videos.length > 0) await redis.setex(ytCacheKey, 86400, JSON.stringify(videos));
+              return videos;
             })
           );
-          audioQuestions.forEach((q, idx) => {
+          questionsToSearch.forEach((q, idx) => {
             const videos = searchResults[idx];
             if (videos && videos.length > 0) {
               q.metadata = { ...q.metadata, youtubeVideoId: videos[0].videoId };

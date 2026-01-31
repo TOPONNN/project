@@ -125,6 +125,7 @@ export default function RoomPage() {
    const [searching, setSearching] = useState(false);
    const [mediaStatus, setMediaStatus] = useState({ isCameraOn: true, isMicOn: true });
    const [isQuizLoading, setIsQuizLoading] = useState(false);
+  const [quizCount, setQuizCount] = useState(30);
 
   useEffect(() => {
     const fetchRoom = async () => {
@@ -388,7 +389,7 @@ export default function RoomPage() {
            .map(s => s.songId as string);
          const allSongIds = [queueItem.songId, ...readySongIds.filter(id => id !== queueItem.songId)];
          
-          const quizRes = await fetch(`/api/songs/quiz/generate?songIds=${allSongIds.join(",")}&count=30`);
+          const quizRes = await fetch(`/api/songs/quiz/generate?songIds=${allSongIds.join(",")}&count=${quizCount}`);
          const quizData = await quizRes.json();
          if (quizData.success && quizData.data.questions) {
            dispatch(setQuizQuestions(quizData.data.questions.map((q: any, idx: number) => {
@@ -474,7 +475,7 @@ export default function RoomPage() {
     const startQuiz = async () => {
       setIsQuizLoading(true);
       try {
-         const res = await fetch(`/api/songs/quiz/generate?count=30`);
+         const res = await fetch(`/api/songs/quiz/generate?count=${quizCount}`);
         const data = await res.json();
         
         if (!data.success || !data.data?.questions) {
@@ -683,6 +684,27 @@ export default function RoomPage() {
             </div>
             <h2 className="text-3xl font-bold mb-3">노래 퀴즈</h2>
             <p className="text-gray-400 mb-8">6가지 퀴즈 유형으로 노래 실력을 겨뤄보세요!</p>
+
+            {/* Quiz count selector */}
+            <div className="mb-6">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">문제 수</p>
+              <div className="flex gap-3 justify-center">
+                {[30, 50, 100].map((num) => (
+                  <button
+                    key={num}
+                    onClick={() => setQuizCount(num)}
+                    className={`px-6 py-3 rounded-xl font-bold text-lg transition-all border ${
+                      quizCount === num
+                        ? "bg-[#FF6B6B]/20 border-[#FF6B6B]/60 text-[#FF6B6B] shadow-[0_0_15px_-5px_rgba(255,107,107,0.4)]"
+                        : "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-300"
+                    }`}
+                  >
+                    {num}문제
+                  </button>
+                ))}
+              </div>
+            </div>
+
              <button
                onClick={startQuiz}
                disabled={isQuizLoading}
