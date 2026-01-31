@@ -46,12 +46,12 @@ const modeConfig = {
     color: "#FFD700",
     Component: PerfectScoreGame,
   },
-  lyrics_quiz: {
-    title: "가사 맞추기",
-    icon: MessageSquareText,
-    color: "#FF6B6B",
-    Component: LyricsQuizGame,
-  },
+   lyrics_quiz: {
+     title: "노래 퀴즈",
+     icon: MessageSquareText,
+     color: "#FF6B6B",
+     Component: LyricsQuizGame,
+   },
   battle: {
     title: "배틀 모드",
     icon: Swords,

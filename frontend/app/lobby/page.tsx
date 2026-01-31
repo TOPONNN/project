@@ -10,11 +10,11 @@ import {
 } from "lucide-react";
 
 const modeConfig = {
-  normal: { title: "일반 모드", icon: Music, color: "#C0C0C0" },
-  perfect_score: { title: "퍼펙트 스코어", icon: Target, color: "#FFD700" },
-  lyrics_quiz: { title: "가사 맞추기", icon: MessageSquareText, color: "#FF6B6B" },
-  battle: { title: "배틀 모드", icon: Swords, color: "#FF4500" },
-  duet: { title: "듀엣 모드", icon: Users, color: "#9B59B6" },
+   normal: { title: "일반 모드", icon: Music, color: "#C0C0C0" },
+   perfect_score: { title: "퍼펙트 스코어", icon: Target, color: "#FFD700" },
+   lyrics_quiz: { title: "노래 퀴즈", icon: MessageSquareText, color: "#FF6B6B" },
+   battle: { title: "배틀 모드", icon: Swords, color: "#FF4500" },
+   duet: { title: "듀엣 모드", icon: Users, color: "#9B59B6" },
 };
 
 interface Room {

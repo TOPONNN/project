@@ -41,12 +41,12 @@ export default function LyricsQuizModePage() {
           "Authorization": `Bearer ${localStorage.getItem("token")}`
         },
         body: JSON.stringify({
-          name: "가사 맞추기 방",
-          gameMode: "lyrics_quiz",
-          hostId: userId,
-          maxParticipants: 8,
-          isPrivate: false,
-        }),
+           name: "노래 퀴즈 방",
+           gameMode: "lyrics_quiz",
+           hostId: userId,
+           maxParticipants: 8,
+           isPrivate: false,
+         }),
       });
 
       const data = await res.json();
@@ -93,9 +93,9 @@ export default function LyricsQuizModePage() {
             <span className="text-sm font-medium">MODE 03</span>
           </div>
 
-          <h1 className="text-5xl md:text-7xl font-bold mb-6">
-            <span className="text-[#FF6B6B]">가사 맞추기</span>
-          </h1>
+           <h1 className="text-5xl md:text-7xl font-bold mb-6">
+             <span className="text-[#FF6B6B]">노래 퀴즈</span>
+           </h1>
 
           <p className="text-xl text-gray-400 mb-12 leading-relaxed">
             빈칸으로 가려진 가사를 맞춰보세요.

@@ -80,11 +80,20 @@ export default function LyricsQuizGame() {
     }
   }, [currentQuestionIndex, currentQuestion]);
 
-  const handleTimeUp = useCallback(() => {
-    if (!submitted && !isAnswerRevealed) {
-      setSubmitted(true);
-    }
-  }, [submitted, isAnswerRevealed]);
+   const handleTimeUp = useCallback(() => {
+     if (!submitted && !isAnswerRevealed) {
+       setSubmitted(true);
+       
+       setTimeout(() => {
+         dispatch(revealAnswer([{
+           odId: "local",
+           odName: "나",
+           isCorrect: false,
+           points: 0,
+         }]));
+       }, 500);
+     }
+   }, [submitted, isAnswerRevealed, dispatch]);
 
   useEffect(() => {
     if (!currentQuestion || isAnswerRevealed || submitted) return;
@@ -129,50 +138,92 @@ export default function LyricsQuizGame() {
     }
   }, [isAnswerRevealed, currentQuestionIndex, quizQuestions.length, dispatch, roundResults, streak]);
 
-  const handleSelectAnswer = (index: number) => {
-    if (submitted || isAnswerRevealed) return;
-    setSubmitted(true);
-    dispatch(selectAnswer(index));
-    
-    let answerValue: any = "";
-    if (currentQuestion.type === "true_false") {
-      answerValue = index === 0 ? "true" : "false";
-    } else {
-      answerValue = currentQuestion.options ? currentQuestion.options[index] : "";
-    }
+   const handleSelectAnswer = (index: number) => {
+     if (submitted || isAnswerRevealed) return;
+     setSubmitted(true);
+     dispatch(selectAnswer(index));
+     
+     let answerValue: any = "";
+     let isCorrect = false;
+     
+     if (currentQuestion.type === "true_false") {
+       answerValue = index === 0 ? "true" : "false";
+       isCorrect = answerValue === currentQuestion.correctAnswer;
+     } else {
+       answerValue = currentQuestion.options ? currentQuestion.options[index] : "";
+       isCorrect = index === currentQuestion.correctIndex;
+     }
 
-    emitEvent("quiz:submit-answer", {
-      roomCode: code,
-      answer: answerValue,
-      questionIndex: currentQuestionIndex,
-      timeLeft,
-    });
-  };
+     const points = isCorrect ? Math.round(1000 * (timeLeft / (currentQuestion.timeLimit || 20))) : 0;
 
-  const handleOrderSubmit = () => {
-    if (submitted || isAnswerRevealed || ordering.length !== 4) return;
-    setSubmitted(true);
-    
-    emitEvent("quiz:submit-answer", {
-      roomCode: code,
-      answer: ordering,
-      questionIndex: currentQuestionIndex,
-      timeLeft,
-    });
-  };
+     emitEvent("quiz:submit-answer", {
+       roomCode: code,
+       answer: answerValue,
+       questionIndex: currentQuestionIndex,
+       timeLeft,
+     });
 
-  const handleTextSubmit = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (submitted || isAnswerRevealed || !textAnswer.trim()) return;
-    setSubmitted(true);
+     // Local answer revelation after short delay
+     setTimeout(() => {
+       dispatch(revealAnswer([{
+         odId: "local",
+         odName: "나",
+         isCorrect,
+         points,
+       }]));
+     }, 800);
+   };
 
-    emitEvent("quiz:submit-answer", {
-      roomCode: code,
-      answer: textAnswer.trim(),
-      questionIndex: currentQuestionIndex,
-      timeLeft,
-    });
-  };
+   const handleOrderSubmit = () => {
+     if (submitted || isAnswerRevealed || ordering.length !== 4) return;
+     setSubmitted(true);
+     
+     const correctOrder = currentQuestion.correctOrder || [0, 1, 2, 3];
+     const isCorrect = JSON.stringify(ordering) === JSON.stringify(correctOrder);
+     const points = isCorrect ? Math.round(1000 * (timeLeft / (currentQuestion.timeLimit || 20))) : 0;
+
+     emitEvent("quiz:submit-answer", {
+       roomCode: code,
+       answer: ordering,
+       questionIndex: currentQuestionIndex,
+       timeLeft,
+     });
+
+     setTimeout(() => {
+       dispatch(revealAnswer([{
+         odId: "local",
+         odName: "나",
+         isCorrect,
+         points,
+       }]));
+     }, 800);
+   };
+
+   const handleTextSubmit = (e?: React.FormEvent) => {
+     e?.preventDefault();
+     if (submitted || isAnswerRevealed || !textAnswer.trim()) return;
+     setSubmitted(true);
+
+     const normalize = (s: string) => s.replace(/\s/g, '').toLowerCase();
+     const isCorrect = normalize(textAnswer.trim()) === normalize(currentQuestion.correctAnswer || "");
+     const points = isCorrect ? Math.round(1000 * (timeLeft / (currentQuestion.timeLimit || 20))) : 0;
+
+     emitEvent("quiz:submit-answer", {
+       roomCode: code,
+       answer: textAnswer.trim(),
+       questionIndex: currentQuestionIndex,
+       timeLeft,
+     });
+
+     setTimeout(() => {
+       dispatch(revealAnswer([{
+         odId: "local",
+         odName: "나",
+         isCorrect,
+         points,
+       }]));
+     }, 800);
+   };
 
   const handleOrderClick = (index: number) => {
     if (submitted || isAnswerRevealed) return;
