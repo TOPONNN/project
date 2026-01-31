@@ -25,10 +25,9 @@ interface LyricsLine {
 }
 
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-const NOTE_LABELS = ["C", "D", "E", "F", "G", "A", "B"];
 const VISIBLE_WINDOW = 8;
 const HIT_LINE_RATIO = 0.18;
-const USER_TRAIL_SECONDS = 10;
+const USER_TRAIL_SECONDS = 3;
 
 export default function PerfectScoreGame() {
   const dispatch = useDispatch();
@@ -50,6 +49,7 @@ export default function PerfectScoreGame() {
   const latestPitchRef = useRef<{ frequency: number; time: number }>({ frequency: 0, time: 0 });
   const lastPitchUpdateRef = useRef(0);
   const isMicOnRef = useRef(false);
+  const lastRawPitchesRef = useRef<number[]>([]);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMicOn, setIsMicOn] = useState(true);
@@ -81,18 +81,7 @@ export default function PerfectScoreGame() {
     return list;
   }, [lyrics]);
 
-  const midiRange = useMemo(() => {
-    if (words.length === 0) return { min: 45, max: 75 };
-    let min = 127;
-    let max = 0;
-    words.forEach((word) => {
-      if (typeof word.midi === "number") {
-        min = Math.min(min, word.midi);
-        max = Math.max(max, word.midi);
-      }
-    });
-    return { min: Math.max(30, min - 3), max: Math.min(96, max + 3) };
-  }, [words]);
+  const midiRange = useMemo(() => ({ min: 36, max: 84 }), []);
 
   const findCurrentLyricIndex = useCallback((time: number): number => {
     if (lyrics.length === 0) return -1;
@@ -283,8 +272,16 @@ export default function PerfectScoreGame() {
 
       if (frequency > 0) {
         latestPitchRef.current = { frequency, time: now };
-        const midi = 69 + 12 * Math.log2(frequency / 440);
-        userPitchTrailRef.current.push({ time: now, midi });
+        const rawMidi = 69 + 12 * Math.log2(frequency / 440);
+        
+        lastRawPitchesRef.current.push(rawMidi);
+        if (lastRawPitchesRef.current.length > 3) {
+          lastRawPitchesRef.current.shift();
+        }
+        
+        const smoothedMidi = lastRawPitchesRef.current.reduce((sum, val) => sum + val, 0) / lastRawPitchesRef.current.length;
+        
+        userPitchTrailRef.current.push({ time: now, midi: smoothedMidi });
         if (now - lastPitchUpdateRef.current > 0.08) {
           lastPitchUpdateRef.current = now;
         }
@@ -378,6 +375,7 @@ export default function PerfectScoreGame() {
     comboRef.current = 0;
     scoredWordsRef.current.clear();
     userPitchTrailRef.current = [];
+    lastRawPitchesRef.current = [];
   }, []);
 
   const handleSeek = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -444,22 +442,34 @@ export default function PerfectScoreGame() {
         return topPadding + ((midiRange.max - midi) / range) * staffHeight;
       };
 
-      ctx.strokeStyle = "rgba(255,255,255,0.08)";
-      ctx.lineWidth = 1;
       for (let midi = midiRange.min; midi <= midiRange.max; midi += 1) {
         const y = midiToY(midi);
-        ctx.beginPath();
-        ctx.moveTo(leftPadding, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
+        const noteIdx = midi % 12;
+        const isC = noteIdx === 0;
+        const isNatural = [0, 2, 4, 5, 7, 9, 11].includes(noteIdx);
 
-        const note = NOTE_NAMES[((midi % 12) + 12) % 12];
-        if (NOTE_LABELS.includes(note)) {
-          ctx.fillStyle = "rgba(255,255,255,0.5)";
-          ctx.font = "12px 'Noto Sans KR', sans-serif";
+        if (isC) {
+          ctx.beginPath();
+          ctx.moveTo(leftPadding, y);
+          ctx.lineTo(width, y);
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = "rgba(255,255,255,0.15)";
+          ctx.stroke();
+
+          const octave = Math.floor(midi / 12) - 1;
+          const label = `C${octave}`;
+          ctx.fillStyle = "rgba(255,255,255,0.6)";
+          ctx.font = "bold 11px 'Noto Sans KR', sans-serif";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillText(note, 22, y);
+          ctx.fillText(label, 22, y);
+        } else if (isNatural) {
+          ctx.beginPath();
+          ctx.moveTo(leftPadding, y);
+          ctx.lineTo(width, y);
+          ctx.lineWidth = 0.5;
+          ctx.strokeStyle = "rgba(255,255,255,0.04)";
+          ctx.stroke();
         }
       }
 
@@ -487,14 +497,25 @@ export default function PerfectScoreGame() {
         ctx.lineWidth = 2.5;
         ctx.shadowColor = "rgba(255,215,0,0.5)";
         ctx.shadowBlur = 8;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
         ctx.beginPath();
+        
         trail.forEach((point, index) => {
           const x = hitLineX + (point.time - now) * pixelsPerSecond;
           const y = midiToY(point.midi);
+          
           if (index === 0) {
             ctx.moveTo(x, y);
           } else {
-            ctx.lineTo(x, y);
+            const prevPoint = trail[index - 1];
+            const jump = Math.abs(point.midi - prevPoint.midi);
+            
+            if (jump > 12) {
+               ctx.moveTo(x, y);
+            } else {
+               ctx.lineTo(x, y);
+            }
           }
         });
         ctx.stroke();
@@ -543,7 +564,7 @@ export default function PerfectScoreGame() {
   }
 
   return (
-    <div className="relative w-full h-full bg-gradient-to-b from-[#0a0e27] via-[#0d1117] to-black text-white overflow-hidden">
+    <div className="flex flex-col w-full h-full bg-gradient-to-b from-[#0a0e27] via-[#0d1117] to-black text-white overflow-hidden">
       {audioUrl && (
         <audio
           ref={audioRef}
@@ -552,11 +573,11 @@ export default function PerfectScoreGame() {
         />
       )}
 
-      <div className="absolute top-0 left-0 right-0 z-20 px-4 pt-4">
+      <div className="shrink-0 px-4 pt-4 pb-2 z-20">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-sm text-white/60">TJ 퍼펙트 스코어</p>
-            <h1 className="text-xl sm:text-2xl font-bold">{currentSong.title}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold truncate max-w-[200px] sm:max-w-md">{currentSong.title}</h1>
             <p className="text-sm text-white/50">{currentSong.artist}</p>
           </div>
           <div className="text-right">
@@ -567,75 +588,75 @@ export default function PerfectScoreGame() {
           </div>
         </div>
 
-        <div className="mt-4 h-2 w-full bg-white/10 rounded-full overflow-hidden" onClick={handleSeek}>
+        <div className="mt-4 h-2 w-full bg-white/10 rounded-full overflow-hidden cursor-pointer relative group" onClick={handleSeek}>
           <motion.div
             className="h-full bg-gradient-to-r from-[#FFD700] via-[#A855F7] to-[#38BDF8]"
             style={{ width: `${progress}%` }}
           />
+          <div className="absolute top-0 bottom-0 w-full opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="h-full bg-white/10 w-full" />
+          </div>
         </div>
       </div>
 
-      <div className="absolute inset-x-0 top-[12%] bottom-[18%] px-2 sm:px-6">
+      <div className="flex-1 min-h-0 relative w-full z-10 my-2 px-2 sm:px-6">
         <div className="relative w-full h-full">
           <canvas ref={canvasRef} className="w-full h-full rounded-2xl border border-white/10 bg-black/40" />
         </div>
+        
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden">
+          <AnimatePresence>
+            {scorePopups.map(popup => (
+              <motion.div
+                key={popup.id}
+                initial={{ opacity: 1, y: 0, scale: 1 }}
+                animate={{ opacity: 0, y: -60, scale: 1.4 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.8 }}
+                className={`text-4xl font-black drop-shadow-[0_6px_20px_rgba(0,0,0,0.6)] ${
+                  popup.type === "PERFECT"
+                    ? "text-[#FFD700]"
+                    : popup.type === "GREAT"
+                    ? "text-green-400"
+                    : popup.type === "GOOD"
+                    ? "text-blue-400"
+                    : "text-red-400"
+                }`}
+              >
+                {popup.type}
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
       </div>
 
-      <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center">
-        <AnimatePresence>
-          {scorePopups.map(popup => (
-            <motion.div
-              key={popup.id}
-              initial={{ opacity: 1, y: 0, scale: 1 }}
-              animate={{ opacity: 0, y: -60, scale: 1.4 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.8 }}
-              className={`text-4xl font-black drop-shadow-[0_6px_20px_rgba(0,0,0,0.6)] ${
-                popup.type === "PERFECT"
-                  ? "text-[#FFD700]"
-                  : popup.type === "GREAT"
-                  ? "text-green-400"
-                  : popup.type === "GOOD"
-                  ? "text-blue-400"
-                  : "text-red-400"
-              }`}
-            >
-              {popup.type}
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
-
-      <div className="absolute bottom-[16%] left-0 right-0 z-20 px-4 sm:px-10">
-        <div className="flex flex-col gap-3">
-          <div className="text-2xl sm:text-3xl md:text-4xl font-black text-white text-center" style={{ WebkitTextStroke: "2px rgba(0,0,0,0.9)", paintOrder: "stroke fill" }}>
-            {currentLine?.text || ""}
+      <div className="shrink-0 px-4 py-2 z-20">
+        <div className="flex flex-col gap-2 items-center text-center">
+          <div className="text-2xl sm:text-3xl md:text-4xl font-black text-white" style={{ WebkitTextStroke: "2px rgba(0,0,0,0.9)", paintOrder: "stroke fill" }}>
+            {currentLine?.text || "\u00A0"}
           </div>
-          <div className="text-lg sm:text-2xl font-bold text-white/50 text-center" style={{ WebkitTextStroke: "1px rgba(0,0,0,0.8)", paintOrder: "stroke fill" }}>
-            {nextLine?.text || ""}
+          <div className="text-lg sm:text-2xl font-bold text-white/50" style={{ WebkitTextStroke: "1px rgba(0,0,0,0.8)", paintOrder: "stroke fill" }}>
+            {nextLine?.text || "\u00A0"}
           </div>
         </div>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 z-30 px-4 py-3 sm:px-6 sm:py-4 bg-gradient-to-t from-black via-black/80 to-transparent">
+      <div className="shrink-0 px-4 py-3 sm:px-6 sm:py-4 bg-gradient-to-t from-black via-black/80 to-transparent z-30">
         <div className="max-w-5xl mx-auto">
-          <div className="flex items-center gap-3 mb-3">
-            <span className="text-xs text-white/60 font-mono w-10 text-right">{formatTime(localTime)}</span>
-            <div
-              className="flex-1 h-1.5 bg-white/20 rounded-full cursor-pointer group hover:h-2 transition-all"
-              onClick={handleSeek}
-            >
-              <div className="h-full bg-[#FFD700] rounded-full" style={{ width: `${progress}%` }}>
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity" />
-              </div>
-            </div>
-            <span className="text-xs text-white/60 font-mono w-10">{formatTime(duration)}</span>
+          <div className="flex justify-between text-xs text-white/60 font-mono mb-2 px-1">
+            <span>{formatTime(localTime)}</span>
+            <span>{formatTime(duration)}</span>
           </div>
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
-                <Volume2 className="w-4 h-4 text-white/60" />
+                <button 
+                  onClick={() => setVolume(v => v === 0 ? 1 : 0)}
+                  className="p-1 hover:text-white text-white/60 transition-colors"
+                >
+                  <Volume2 className="w-5 h-5" />
+                </button>
                 <input
                   type="range"
                   min="0"
@@ -647,7 +668,7 @@ export default function PerfectScoreGame() {
                     setVolume(v);
                     if (audioRef.current) audioRef.current.volume = v;
                   }}
-                  className="w-24 accent-[#FFD700]"
+                  className="w-20 sm:w-24 accent-[#FFD700] hidden sm:block"
                 />
               </div>
 
@@ -661,7 +682,7 @@ export default function PerfectScoreGame() {
               </button>
             </div>
 
-            <div className="flex items-center gap-5">
+            <div className="flex items-center gap-4 sm:gap-6">
               <button
                 onClick={handleRestart}
                 className="p-2 text-white/70 hover:text-white transition-colors"
@@ -671,9 +692,9 @@ export default function PerfectScoreGame() {
               <button
                 onClick={togglePlay}
                 disabled={!audioLoaded}
-                className="w-12 h-12 rounded-full bg-[#FFD700] text-black flex items-center justify-center shadow-xl disabled:opacity-50"
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#FFD700] text-black flex items-center justify-center shadow-xl disabled:opacity-50 hover:scale-105 transition-transform"
               >
-                {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-1" />}
+                {isPlaying ? <Pause className="w-5 h-5 sm:w-6 sm:h-6" /> : <Play className="w-5 h-5 sm:w-6 sm:h-6 ml-1" />}
               </button>
               <button
                 onClick={() => window.dispatchEvent(new Event("kero:skipForward"))}
@@ -683,9 +704,10 @@ export default function PerfectScoreGame() {
               </button>
             </div>
 
-            <div className="text-xs text-white/50 font-mono hidden sm:block">
-              {songQueue.length}곡 대기 중
+            <div className="text-xs text-white/50 font-mono hidden sm:block w-20 text-right">
+              {songQueue.length}곡 대기
             </div>
+             <div className="w-8 sm:hidden"></div>
           </div>
         </div>
       </div>
@@ -696,12 +718,18 @@ export default function PerfectScoreGame() {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-40 flex items-center justify-center bg-black/60"
+            className="absolute inset-0 z-50 flex items-center justify-center bg-black/80"
           >
-            <div className="bg-black/70 border border-white/10 rounded-3xl px-10 py-8 text-center shadow-2xl">
-              <p className="text-white/60 tracking-widest text-sm">최종 점수</p>
-              <p className="text-4xl sm:text-5xl font-black text-[#FFD700] mt-2 tabular-nums">{score.toLocaleString()}</p>
-              <p className="text-[#A855F7] font-bold mt-3">최고 콤보 {combo}</p>
+            <div className="bg-[#1a1f35] border border-white/10 rounded-3xl px-10 py-8 text-center shadow-2xl">
+              <p className="text-white/60 tracking-widest text-sm uppercase">Final Score</p>
+              <p className="text-5xl sm:text-6xl font-black text-[#FFD700] mt-4 tabular-nums">{score.toLocaleString()}</p>
+              <p className="text-[#A855F7] font-bold mt-4 text-xl">Max Combo {combo}</p>
+              <button 
+                 onClick={() => window.dispatchEvent(new Event("kero:skipForward"))}
+                 className="mt-8 px-6 py-2 bg-white/10 hover:bg-white/20 rounded-full text-white/80 transition-colors"
+              >
+                Next Song
+              </button>
             </div>
           </motion.div>
         )}
