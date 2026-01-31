@@ -2,6 +2,7 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
 export type GameMode = "normal" | "perfect_score" | "lyrics_quiz" | "battle" | "duet";
 export type GameStatus = "waiting" | "playing" | "paused" | "finished";
+export type QuizType = "lyrics_fill" | "title_guess" | "artist_guess" | "lyrics_order" | "initial_guess" | "true_false";
 
 interface LyricsWord {
   startTime: number;
@@ -24,10 +25,15 @@ interface LyricsLine {
 
 interface QuizQuestion {
   id: string;
-  lyrics: string;
-  options: string[];
-  correctIndex: number;
+  type: QuizType;
+  questionText: string;
+  options?: string[];
+  correctIndex?: number;
+  correctAnswer?: string;
+  correctOrder?: number[];
   timeLimit: number;
+  metadata?: Record<string, any>;
+  lines?: { idx: number; text: string }[];
 }
 
 interface PlayerScore {
@@ -75,10 +81,12 @@ interface GameState {
   } | null;
   currentTime: number;
   currentLyricIndex: number;
-  scores: PlayerScore[];
-  myScore: number;
-  myCombo: number;
-  currentPitch: number;
+   scores: PlayerScore[];
+   myScore: number;
+   myCombo: number;
+   streak: number;
+   maxStreak: number;
+   currentPitch: number;
   targetPitch: number;
   quizQuestions: QuizQuestion[];
   currentQuestionIndex: number;
@@ -94,10 +102,12 @@ const initialState: GameState = {
   currentSong: null,
   currentTime: 0,
   currentLyricIndex: 0,
-  scores: [],
-  myScore: 0,
-  myCombo: 0,
-  currentPitch: 0,
+   scores: [],
+   myScore: 0,
+   myCombo: 0,
+   streak: 0,
+   maxStreak: 0,
+   currentPitch: 0,
   targetPitch: 0,
   quizQuestions: [],
   currentQuestionIndex: 0,
@@ -167,33 +177,40 @@ const gameSlice = createSlice({
     selectAnswer: (state, action: PayloadAction<number>) => {
       state.selectedAnswer = action.payload;
     },
-    revealAnswer: (state, action: PayloadAction<{ odId: string; odName: string; isCorrect: boolean; points: number }[]>) => {
-      state.isAnswerRevealed = true;
-      state.roundResults = action.payload;
-    },
-    resetGame: () => initialState,
+     revealAnswer: (state, action: PayloadAction<{ odId: string; odName: string; isCorrect: boolean; points: number }[]>) => {
+       state.isAnswerRevealed = true;
+       state.roundResults = action.payload;
+     },
+     updateStreak: (state, action: PayloadAction<number>) => {
+       state.streak = action.payload;
+       if (action.payload > state.maxStreak) {
+         state.maxStreak = action.payload;
+       }
+     },
+     resetGame: () => initialState,
   },
 });
 
 export const {
-  setGameMode,
-  setGameStatus,
-  setCurrentSong,
-  addToQueue,
-  removeFromQueue,
-  updateQueueItem,
-  playNextInQueue,
-  setQueue,
-  updateCurrentTime,
-  setCurrentLyricIndex,
-  updateScores,
-  updateMyScore,
-  updatePitch,
-  setQuizQuestions,
-  nextQuestion,
-  selectAnswer,
-  revealAnswer,
-  resetGame,
+   setGameMode,
+   setGameStatus,
+   setCurrentSong,
+   addToQueue,
+   removeFromQueue,
+   updateQueueItem,
+   playNextInQueue,
+   setQueue,
+   updateCurrentTime,
+   setCurrentLyricIndex,
+   updateScores,
+   updateMyScore,
+   updatePitch,
+   setQuizQuestions,
+   nextQuestion,
+   selectAnswer,
+   revealAnswer,
+   updateStreak,
+   resetGame,
 } = gameSlice.actions;
 
 export default gameSlice.reducer;

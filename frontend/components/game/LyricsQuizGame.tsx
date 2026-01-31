@@ -3,35 +3,92 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, Trophy, Users, Check, X, AlertCircle } from "lucide-react";
+import { Trophy, Users, Check, X, AlertCircle, Send } from "lucide-react";
 import type { RootState } from "@/store";
-import { selectAnswer, nextQuestion, revealAnswer, setGameStatus } from "@/store/slices/gameSlice";
+import { selectAnswer, nextQuestion, revealAnswer, setGameStatus, updateStreak } from "@/store/slices/gameSlice";
 import { useSocket } from "@/hooks/useSocket";
 
-const COLORS = [
-  { bg: "bg-red-500", hover: "hover:bg-red-600", icon: "🔴" },
-  { bg: "bg-blue-500", hover: "hover:bg-blue-600", icon: "🔵" },
-  { bg: "bg-yellow-500", hover: "hover:bg-yellow-600", icon: "🟡" },
-  { bg: "bg-green-500", hover: "hover:bg-green-600", icon: "🟢" },
+const KAHOOT_COLORS = [
+  { bg: "#E21B3C", ring: "ring-[#E21B3C]", shape: "▲", name: "red" },
+  { bg: "#1368CE", ring: "ring-[#1368CE]", shape: "◆", name: "blue" },
+  { bg: "#D89E00", ring: "ring-[#D89E00]", shape: "●", name: "yellow" },
+  { bg: "#26890C", ring: "ring-[#26890C]", shape: "■", name: "green" },
 ];
+
+const TimerCircle = ({ timeLeft, timeLimit }: { timeLeft: number; timeLimit: number }) => {
+  const radius = 30;
+  const circumference = 2 * Math.PI * radius;
+  const progress = (timeLeft / timeLimit) * circumference;
+  
+  return (
+    <div className="relative w-20 h-20">
+      <svg className="w-full h-full -rotate-90" viewBox="0 0 80 80">
+        <circle cx="40" cy="40" r={radius} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="6" />
+        <circle 
+          cx="40" 
+          cy="40" 
+          r={radius} 
+          fill="none" 
+          stroke={timeLeft <= 5 ? "#E21B3C" : "#fff"} 
+          strokeWidth="6"
+          strokeDasharray={circumference} 
+          strokeDashoffset={circumference - progress}
+          strokeLinecap="round" 
+          className="transition-all duration-1000 ease-linear" 
+        />
+      </svg>
+      <span className={`absolute inset-0 flex items-center justify-center text-2xl font-bold ${timeLeft <= 5 ? "text-red-400" : "text-white"}`}>
+        {timeLeft}
+      </span>
+    </div>
+  );
+};
 
 export default function LyricsQuizGame() {
   const dispatch = useDispatch();
-  const { quizQuestions, currentQuestionIndex, selectedAnswer, isAnswerRevealed, roundResults, myScore, scores, currentSong } = 
-    useSelector((state: RootState) => state.game);
+  const { 
+    quizQuestions, 
+    currentQuestionIndex, 
+    selectedAnswer, 
+    isAnswerRevealed, 
+    roundResults, 
+    myScore, 
+    scores, 
+    currentSong,
+    streak
+  } = useSelector((state: RootState) => state.game);
   const { code, participants } = useSelector((state: RootState) => state.room);
   const { emitEvent } = useSocket(code);
   
   const [timeLeft, setTimeLeft] = useState(20);
   const [showResults, setShowResults] = useState(false);
   const [localScore, setLocalScore] = useState(0);
+  const [submitted, setSubmitted] = useState(false);
+  
+  const [ordering, setOrdering] = useState<number[]>([]);
+  const [textAnswer, setTextAnswer] = useState("");
 
   const currentQuestion = quizQuestions[currentQuestionIndex];
 
   useEffect(() => {
-    if (!currentQuestion || isAnswerRevealed) return;
+    if (currentQuestion) {
+      setTimeLeft(currentQuestion.timeLimit || 20);
+      setOrdering([]);
+      setTextAnswer("");
+      setSubmitted(false);
+      setShowResults(false);
+    }
+  }, [currentQuestionIndex, currentQuestion]);
 
-    setTimeLeft(currentQuestion.timeLimit || 20);
+  const handleTimeUp = useCallback(() => {
+    if (!submitted && !isAnswerRevealed) {
+      setSubmitted(true);
+    }
+  }, [submitted, isAnswerRevealed]);
+
+  useEffect(() => {
+    if (!currentQuestion || isAnswerRevealed || submitted) return;
+
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
@@ -44,30 +101,22 @@ export default function LyricsQuizGame() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [currentQuestion, currentQuestionIndex, isAnswerRevealed]);
-
-  const handleTimeUp = useCallback(() => {
-    if (selectedAnswer === null && !isAnswerRevealed) {
-      dispatch(revealAnswer([{
-        odId: "local",
-        odName: "나",
-        isCorrect: false,
-        points: 0,
-      }]));
-      
-      setTimeout(() => {
-        if (currentQuestionIndex < quizQuestions.length - 1) {
-          dispatch(nextQuestion());
-        } else {
-          dispatch(setGameStatus("finished"));
-        }
-      }, 3000);
-    }
-  }, [selectedAnswer, isAnswerRevealed, currentQuestionIndex, quizQuestions.length, dispatch]);
+  }, [currentQuestion, isAnswerRevealed, submitted, handleTimeUp]);
 
   useEffect(() => {
     if (isAnswerRevealed) {
       setShowResults(true);
+      
+      const myResult = roundResults.find(r => r.odId === "local" || r.odName === "나");
+      if (myResult) {
+        if (myResult.isCorrect) {
+          setLocalScore(prev => prev + myResult.points);
+          dispatch(updateStreak(streak + 1));
+        } else {
+          dispatch(updateStreak(0));
+        }
+      }
+
       const timeout = setTimeout(() => {
         setShowResults(false);
         if (currentQuestionIndex < quizQuestions.length - 1) {
@@ -75,92 +124,306 @@ export default function LyricsQuizGame() {
         } else {
           dispatch(setGameStatus("finished"));
         }
-      }, 3000);
+      }, 5000);
       return () => clearTimeout(timeout);
     }
-  }, [isAnswerRevealed, currentQuestionIndex, quizQuestions.length, dispatch]);
+  }, [isAnswerRevealed, currentQuestionIndex, quizQuestions.length, dispatch, roundResults, streak]);
 
   const handleSelectAnswer = (index: number) => {
-    if (selectedAnswer !== null || isAnswerRevealed) return;
+    if (submitted || isAnswerRevealed) return;
+    setSubmitted(true);
     dispatch(selectAnswer(index));
     
-    const isCorrect = index === currentQuestion.correctIndex;
-    const points = isCorrect ? Math.round(1000 * (timeLeft / (currentQuestion.timeLimit || 20))) : 0;
-    
-    if (isCorrect) {
-      setLocalScore(prev => prev + points);
+    let answerValue: any = "";
+    if (currentQuestion.type === "true_false") {
+      answerValue = index === 0 ? "true" : "false";
+    } else {
+      answerValue = currentQuestion.options ? currentQuestion.options[index] : "";
     }
-    
-    emitEvent("quiz:answer", { 
-      questionIndex: currentQuestionIndex, 
-      answerIndex: index,
+
+    emitEvent("quiz:submit-answer", {
+      roomCode: code,
+      answer: answerValue,
+      questionIndex: currentQuestionIndex,
       timeLeft,
     });
+  };
+
+  const handleOrderSubmit = () => {
+    if (submitted || isAnswerRevealed || ordering.length !== 4) return;
+    setSubmitted(true);
     
-    setTimeout(() => {
-      dispatch(revealAnswer([{
-        odId: "local",
-        odName: "나",
-        isCorrect,
-        points,
-      }]));
-    }, 500);
+    emitEvent("quiz:submit-answer", {
+      roomCode: code,
+      answer: ordering,
+      questionIndex: currentQuestionIndex,
+      timeLeft,
+    });
+  };
+
+  const handleTextSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (submitted || isAnswerRevealed || !textAnswer.trim()) return;
+    setSubmitted(true);
+
+    emitEvent("quiz:submit-answer", {
+      roomCode: code,
+      answer: textAnswer.trim(),
+      questionIndex: currentQuestionIndex,
+      timeLeft,
+    });
+  };
+
+  const handleOrderClick = (index: number) => {
+    if (submitted || isAnswerRevealed) return;
+    if (ordering.includes(index)) {
+      setOrdering(prev => prev.filter(i => i !== index));
+    } else {
+      if (ordering.length < 4) {
+        setOrdering(prev => [...prev, index]);
+      }
+    }
+  };
+
+  const renderQuestionContent = () => {
+    switch (currentQuestion.type) {
+      case "lyrics_fill":
+      case "title_guess":
+      case "artist_guess":
+        return (
+          <div className="grid grid-cols-2 gap-4 w-full h-full">
+            {currentQuestion.options?.map((option, index) => {
+              const isSelected = selectedAnswer === index;
+              const isCorrect = isAnswerRevealed && index === currentQuestion.correctIndex;
+              const isWrong = isAnswerRevealed && isSelected && index !== currentQuestion.correctIndex;
+              const isOther = isAnswerRevealed && !isCorrect && !isWrong;
+
+              return (
+                <motion.button
+                  key={index}
+                  onClick={() => handleSelectAnswer(index)}
+                  disabled={submitted || isAnswerRevealed}
+                  whileHover={!submitted ? { scale: 1.02 } : {}}
+                  whileTap={!submitted ? { scale: 0.98 } : {}}
+                  className={`
+                    relative p-6 rounded-lg shadow-lg flex items-center gap-4 text-left overflow-hidden
+                    ${KAHOOT_COLORS[index].bg}
+                    ${isOther ? "opacity-40" : "opacity-100"}
+                    ${isSelected ? "ring-4 ring-white" : ""}
+                    transition-all duration-300
+                  `}
+                >
+                  <div className="flex-shrink-0 w-12 h-12 bg-black/20 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-inner">
+                    {KAHOOT_COLORS[index].shape}
+                  </div>
+                  <span className="text-xl font-bold text-white drop-shadow-md leading-tight">{option}</span>
+                  
+                  {isCorrect && (
+                    <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute top-2 right-2">
+                      <Check className="w-8 h-8 text-white drop-shadow-lg" />
+                    </motion.div>
+                  )}
+                  {isWrong && (
+                    <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute top-2 right-2">
+                      <X className="w-8 h-8 text-white drop-shadow-lg" />
+                    </motion.div>
+                  )}
+                </motion.button>
+              );
+            })}
+          </div>
+        );
+
+      case "true_false":
+        return (
+          <div className="grid grid-cols-2 gap-6 w-full h-full">
+            <motion.button
+              onClick={() => handleSelectAnswer(0)}
+              disabled={submitted || isAnswerRevealed}
+              whileHover={!submitted ? { scale: 1.05 } : {}}
+              whileTap={!submitted ? { scale: 0.95 } : {}}
+              className={`
+                bg-[#1368CE] rounded-xl flex flex-col items-center justify-center gap-4 p-8 shadow-xl
+                ${selectedAnswer === 0 ? "ring-8 ring-white" : ""}
+                ${isAnswerRevealed && currentQuestion.correctIndex !== 0 ? "opacity-40" : ""}
+              `}
+            >
+              <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center">
+                <div className="w-24 h-24 border-8 border-[#1368CE] rounded-full" />
+              </div>
+              <span className="text-4xl font-black text-white">TRUE</span>
+            </motion.button>
+
+            <motion.button
+              onClick={() => handleSelectAnswer(1)}
+              disabled={submitted || isAnswerRevealed}
+              whileHover={!submitted ? { scale: 1.05 } : {}}
+              whileTap={!submitted ? { scale: 0.95 } : {}}
+              className={`
+                bg-[#E21B3C] rounded-xl flex flex-col items-center justify-center gap-4 p-8 shadow-xl
+                ${selectedAnswer === 1 ? "ring-8 ring-white" : ""}
+                ${isAnswerRevealed && currentQuestion.correctIndex !== 1 ? "opacity-40" : ""}
+              `}
+            >
+               <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center">
+                <X className="w-24 h-24 text-[#E21B3C] stroke-[5]" />
+              </div>
+              <span className="text-4xl font-black text-white">FALSE</span>
+            </motion.button>
+          </div>
+        );
+
+      case "lyrics_order":
+        return (
+          <div className="flex flex-col h-full gap-4">
+            <div className="flex-1 grid grid-rows-4 gap-3">
+              {currentQuestion.lines?.map((line, idx) => {
+                const orderIndex = ordering.indexOf(idx);
+                const isSelected = orderIndex !== -1;
+                
+                return (
+                  <motion.button
+                    key={idx}
+                    onClick={() => handleOrderClick(idx)}
+                    disabled={submitted || isAnswerRevealed}
+                    layout
+                    whileHover={!submitted && !isSelected ? { scale: 1.02, x: 10 } : {}}
+                    className={`
+                      relative w-full p-4 rounded-xl flex items-center gap-4 text-left font-medium text-lg shadow-lg
+                      ${isSelected ? "bg-[#46178F] border-2 border-[#fff]" : "bg-white text-gray-800"}
+                      ${isAnswerRevealed ? "opacity-50" : ""}
+                      transition-colors
+                    `}
+                  >
+                     <div className={`
+                       w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0
+                       ${isSelected ? "bg-[#FFD700] text-[#46178F]" : "bg-gray-200 text-gray-500"}
+                     `}>
+                       {isSelected ? orderIndex + 1 : idx + 1}
+                     </div>
+                     <span className={isSelected ? "text-white" : ""}>{line.text}</span>
+                  </motion.button>
+                );
+              })}
+            </div>
+            
+            {!submitted && !isAnswerRevealed && ordering.length === 4 && (
+              <motion.button
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                onClick={handleOrderSubmit}
+                className="w-full py-4 bg-[#26890C] hover:bg-[#20720A] text-white font-bold text-xl rounded-xl shadow-xl flex items-center justify-center gap-2"
+              >
+                <Check className="w-6 h-6" /> 제출하기
+              </motion.button>
+            )}
+          </div>
+        );
+
+      case "initial_guess":
+        return (
+          <div className="flex flex-col items-center justify-center h-full gap-8">
+            <div className="bg-white/10 backdrop-blur-md p-12 rounded-3xl border border-white/20 shadow-2xl">
+              <span className="text-8xl font-black text-white tracking-widest drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]">
+                {currentQuestion.questionText}
+              </span>
+            </div>
+            
+            <form onSubmit={handleTextSubmit} className="w-full max-w-xl flex flex-col gap-4">
+               <div className="relative">
+                 <input
+                   type="text"
+                   value={textAnswer}
+                   onChange={(e) => setTextAnswer(e.target.value)}
+                   disabled={submitted || isAnswerRevealed}
+                   placeholder="정답을 입력하세요"
+                   className="w-full px-8 py-6 rounded-full bg-white/90 text-[#46178F] text-2xl font-bold text-center placeholder:text-gray-400 focus:outline-none focus:ring-4 focus:ring-[#FFD700] shadow-xl disabled:opacity-50"
+                   autoFocus
+                 />
+                 {submitted && !isAnswerRevealed && (
+                   <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#46178F]"></div>
+                   </div>
+                 )}
+               </div>
+               
+               {!submitted && !isAnswerRevealed && (
+                 <button
+                   type="submit"
+                   disabled={!textAnswer.trim()}
+                   className="w-full py-4 bg-[#1368CE] hover:bg-[#0E52A3] disabled:bg-gray-500 text-white font-bold text-xl rounded-full shadow-lg transition-colors flex items-center justify-center gap-2"
+                 >
+                   <Send className="w-6 h-6" /> 제출
+                 </button>
+               )}
+            </form>
+          </div>
+        );
+        
+      default:
+        return null;
+    }
   };
 
   if (!currentQuestion) {
-    const sortedParticipants = [...participants].sort((a, b) => {
+     const sortedParticipants = [...participants].sort((a, b) => {
       const scoreA = scores.find(s => s.odId === a.id)?.score || 0;
       const scoreB = scores.find(s => s.odId === b.id)?.score || 0;
       return scoreB - scoreA;
     });
 
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8">
+      <div className="fixed inset-0 bg-[#46178F] flex items-center justify-center p-8 overflow-hidden">
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
         <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          className="text-center max-w-2xl w-full"
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="relative z-10 w-full max-w-4xl bg-white/10 backdrop-blur-xl rounded-3xl border border-white/20 p-12 text-center shadow-2xl"
         >
-          <Trophy className="w-24 h-24 text-[#FFD700] mx-auto mb-6" />
-          <h2 className="text-4xl font-bold mb-2">게임 종료!</h2>
+          <Trophy className="w-32 h-32 text-[#FFD700] mx-auto mb-6 drop-shadow-[0_0_20px_rgba(255,215,0,0.5)]" />
+          <h2 className="text-5xl font-black text-white mb-2">게임 종료!</h2>
           {currentSong && (
-            <p className="text-gray-400 mb-6">{currentSong.title} - {currentSong.artist}</p>
+            <p className="text-xl text-white/70 mb-10">{currentSong.title} - {currentSong.artist}</p>
           )}
-          
-          <div className="bg-white/5 rounded-2xl p-6 mb-6">
-            <p className="text-lg text-gray-400 mb-2">내 점수</p>
-            <p className="text-5xl font-bold text-[#FFD700]">{localScore.toLocaleString()}점</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end mb-12 min-h-[300px]">
+            <div className="order-2 md:order-1 flex flex-col items-center">
+               <div className="w-20 h-20 rounded-full bg-gray-300 border-4 border-white mb-4 flex items-center justify-center text-3xl font-bold text-gray-700 shadow-lg">
+                 {sortedParticipants[1]?.nickname?.charAt(0) || "?"}
+               </div>
+               <div className="w-full bg-gray-300/80 rounded-t-lg h-40 flex flex-col items-center justify-center p-4 shadow-lg backdrop-blur-sm">
+                 <span className="text-2xl font-bold text-gray-800">2nd</span>
+                 <span className="text-lg text-gray-700 truncate max-w-full">{sortedParticipants[1]?.nickname || "-"}</span>
+                 <span className="font-mono font-bold">{scores.find(s => s.odId === sortedParticipants[1]?.id)?.score || 0}</span>
+               </div>
+            </div>
+
+            <div className="order-1 md:order-2 flex flex-col items-center z-20">
+               <div className="w-24 h-24 rounded-full bg-[#FFD700] border-4 border-white mb-4 flex items-center justify-center text-4xl font-bold text-yellow-800 shadow-[0_0_30px_rgba(255,215,0,0.6)]">
+                 {sortedParticipants[0]?.nickname?.charAt(0) || "👑"}
+               </div>
+               <div className="w-full bg-[#FFD700]/90 rounded-t-lg h-56 flex flex-col items-center justify-center p-4 shadow-[0_0_30px_rgba(255,215,0,0.3)] backdrop-blur-sm">
+                 <span className="text-4xl font-black text-yellow-900 mb-2">1st</span>
+                 <span className="text-xl font-bold text-yellow-900 truncate max-w-full">{sortedParticipants[0]?.nickname || "Winner"}</span>
+                 <span className="text-2xl font-mono font-black text-yellow-900">{scores.find(s => s.odId === sortedParticipants[0]?.id)?.score || 0}</span>
+               </div>
+            </div>
+
+            <div className="order-3 flex flex-col items-center">
+               <div className="w-20 h-20 rounded-full bg-[#CD7F32] border-4 border-white mb-4 flex items-center justify-center text-3xl font-bold text-amber-900 shadow-lg">
+                 {sortedParticipants[2]?.nickname?.charAt(0) || "?"}
+               </div>
+               <div className="w-full bg-[#CD7F32]/80 rounded-t-lg h-32 flex flex-col items-center justify-center p-4 shadow-lg backdrop-blur-sm">
+                 <span className="text-2xl font-bold text-amber-900">3rd</span>
+                 <span className="text-lg text-amber-900 truncate max-w-full">{sortedParticipants[2]?.nickname || "-"}</span>
+                 <span className="font-mono font-bold text-amber-900">{scores.find(s => s.odId === sortedParticipants[2]?.id)?.score || 0}</span>
+               </div>
+            </div>
           </div>
-          
-          <div className="space-y-3">
-            {sortedParticipants.length > 0 ? sortedParticipants.slice(0, 5).map((player, i) => {
-              const playerScore = scores.find(s => s.odId === player.id)?.score || localScore;
-              return (
-                <motion.div
-                  key={player.id}
-                  initial={{ x: -50, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  transition={{ delay: i * 0.1 }}
-                  className={`flex items-center gap-4 p-4 rounded-xl ${
-                    i === 0 ? "bg-[#FFD700]/20" : "bg-white/10"
-                  }`}
-                >
-                  <span className="text-2xl font-bold w-8">#{i + 1}</span>
-                  <span className="flex-1 text-lg">{player.nickname}</span>
-                  <span className="text-2xl font-bold text-[#FFD700]">{playerScore.toLocaleString()}점</span>
-                </motion.div>
-              );
-            }) : (
-              <motion.div
-                initial={{ x: -50, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                className="flex items-center gap-4 p-4 rounded-xl bg-[#FFD700]/20"
-              >
-                <span className="text-2xl font-bold w-8">#1</span>
-                <span className="flex-1 text-lg">나</span>
-                <span className="text-2xl font-bold text-[#FFD700]">{localScore.toLocaleString()}점</span>
-              </motion.div>
-            )}
+
+          <div className="bg-white/10 rounded-2xl p-6 flex items-center justify-between">
+            <span className="text-xl text-white/80">내 점수</span>
+            <span className="text-4xl font-bold text-[#FFD700]">{localScore.toLocaleString()}점</span>
           </div>
         </motion.div>
       </div>
@@ -169,141 +432,143 @@ export default function LyricsQuizGame() {
 
   if (quizQuestions.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full">
-        <AlertCircle className="w-16 h-16 text-gray-500 mb-4" />
-        <p className="text-gray-400">퀴즈 문제를 불러오는 중...</p>
+      <div className="flex flex-col items-center justify-center h-full bg-[#46178F] text-white">
+        <motion.div 
+          animate={{ rotate: 360 }}
+          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+        >
+          <AlertCircle className="w-16 h-16 text-[#FFD700] mb-4" />
+        </motion.div>
+        <p className="text-xl font-bold opacity-80">퀴즈 준비중...</p>
       </div>
     );
   }
 
+  const getQuestionHeader = () => {
+    switch(currentQuestion.type) {
+      case "title_guess": return "🎵 노래를 듣고 제목을 맞춰보세요";
+      case "artist_guess": return "🎤 노래를 듣고 가수를 맞춰보세요";
+      case "lyrics_order": return "다음 가사를 올바른 순서로 배열하세요";
+      case "initial_guess": return `초성을 보고 정답을 입력하세요 (${currentQuestion.metadata?.hint || '힌트 없음'})`;
+      case "true_false": return "다음 문장이 참이면 O, 거짓이면 X를 선택하세요";
+      default: return "";
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between p-4 bg-black/50">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#FF6B6B]/20">
-            <Trophy className="w-5 h-5 text-[#FF6B6B]" />
-            <span className="text-xl font-bold text-[#FF6B6B]">{localScore.toLocaleString()}점</span>
+    <div className="fixed inset-0 bg-gradient-to-br from-[#46178F] to-[#1D0939] pl-16 pr-56 font-sans">
+      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
+
+      <div className="relative z-10 flex items-center justify-between h-24 px-8 border-b border-white/10">
+        <div className="flex items-center gap-6">
+          <div className="flex flex-col">
+            <span className="text-sm font-bold text-white/60 uppercase tracking-widest">Question</span>
+            <span className="text-3xl font-black text-white">{currentQuestionIndex + 1} <span className="text-lg text-white/40">/ {quizQuestions.length}</span></span>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/10">
-            <Users className="w-4 h-4" />
-            <span className="text-sm">{participants.length || 1}명</span>
-          </div>
+          
+          {streak >= 2 && (
+            <motion.div 
+              initial={{ scale: 0 }} 
+              animate={{ scale: 1 }}
+              className="flex items-center gap-2 px-4 py-1 bg-[#FF6B6B] rounded-full shadow-[0_0_15px_rgba(255,107,107,0.5)]"
+            >
+              <span className="text-xl">🔥</span>
+              <span className="font-bold text-white">{streak} 연속 정답!</span>
+            </motion.div>
+          )}
         </div>
 
-        <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10">
-          <span className="text-sm text-gray-400">
-            {currentQuestionIndex + 1} / {quizQuestions.length}
-          </span>
+        <div className="flex items-center gap-6">
+          <div className="flex flex-col items-end">
+             <span className="text-sm font-bold text-white/60 uppercase tracking-widest">Score</span>
+             <span className="text-2xl font-black text-white">{localScore.toLocaleString()}</span>
+          </div>
+          <TimerCircle timeLeft={timeLeft} timeLimit={currentQuestion.timeLimit || 20} />
         </div>
-
-        <motion.div
-          className={`flex items-center gap-2 px-4 py-2 rounded-full ${
-            timeLeft <= 5 ? "bg-red-500/20" : "bg-white/10"
-          }`}
-          animate={timeLeft <= 5 ? { scale: [1, 1.1, 1] } : {}}
-          transition={{ repeat: Infinity, duration: 0.5 }}
-        >
-          <Clock className={`w-5 h-5 ${timeLeft <= 5 ? "text-red-400" : ""}`} />
-          <span className={`text-xl font-bold ${timeLeft <= 5 ? "text-red-400" : ""}`}>
-            {timeLeft}
-          </span>
-        </motion.div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
-        <motion.div
-          key={currentQuestionIndex}
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-4xl"
-        >
-          <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-8 mb-8">
-            <p className="text-3xl font-bold text-center leading-relaxed">
-              {currentQuestion.lyrics.split("___").map((part, i, arr) => (
-                <span key={i}>
-                  {part}
-                  {i < arr.length - 1 && (
-                    <span className="inline-block mx-2 px-4 py-1 rounded-lg bg-[#FF6B6B]/30 text-[#FF6B6B]">
-                      ?
+      <div className="relative z-10 flex flex-col h-[calc(100vh-6rem)] p-8 gap-8">
+        
+        <div className="h-1/3 w-full bg-white rounded-2xl shadow-2xl flex flex-col items-center justify-center p-8 text-center relative overflow-hidden group">
+          <div className="absolute top-0 left-0 w-full h-2 bg-[#46178F]"></div>
+          
+          {getQuestionHeader() && (
+            <div className="absolute top-4 left-0 w-full text-center">
+               <span className="px-4 py-1 bg-gray-100 rounded-full text-gray-600 text-sm font-bold uppercase tracking-wide">
+                 {getQuestionHeader()}
+               </span>
+            </div>
+          )}
+
+          <h1 className="text-4xl md:text-5xl font-black text-gray-800 leading-tight max-w-5xl">
+            {currentQuestion.type === "lyrics_fill" ? (
+               <span className="leading-normal">
+                 {currentQuestion.questionText.split("___").map((part, i, arr) => (
+                    <span key={i}>
+                      {part}
+                      {i < arr.length - 1 && (
+                        <span className="inline-block mx-2 px-6 py-1 rounded-lg bg-[#46178F]/10 text-[#46178F] border-b-4 border-[#46178F]/20 align-middle">
+                          ?
+                        </span>
+                      )}
                     </span>
-                  )}
-                </span>
-              ))}
-            </p>
-          </div>
+                 ))}
+               </span>
+            ) : currentQuestion.type === "initial_guess" ? (
+               <span className="text-gray-500 text-2xl">아래 초성에 해당하는 단어는?</span>
+            ) : (
+               currentQuestion.questionText
+            )}
+          </h1>
+        </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            {currentQuestion.options.map((option, index) => {
-              const isSelected = selectedAnswer === index;
-              const isCorrect = isAnswerRevealed && index === currentQuestion.correctIndex;
-              const isWrong = isAnswerRevealed && isSelected && index !== currentQuestion.correctIndex;
-
-              return (
-                <motion.button
-                  key={index}
-                  onClick={() => handleSelectAnswer(index)}
-                  disabled={selectedAnswer !== null || isAnswerRevealed}
-                  whileHover={selectedAnswer === null ? { scale: 1.02 } : {}}
-                  whileTap={selectedAnswer === null ? { scale: 0.98 } : {}}
-                  className={`relative p-6 rounded-2xl text-xl font-bold text-white transition-all ${
-                    isCorrect
-                      ? "bg-green-500 ring-4 ring-green-300"
-                      : isWrong
-                      ? "bg-red-500/50"
-                      : isSelected
-                      ? `${COLORS[index % 4].bg} ring-4 ring-white`
-                      : `${COLORS[index % 4].bg} ${COLORS[index % 4].hover}`
-                  } disabled:cursor-not-allowed`}
-                >
-                  <span className="absolute top-3 left-3 text-2xl">{COLORS[index % 4].icon}</span>
-                  {option}
-                  {isCorrect && (
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="absolute top-3 right-3"
-                    >
-                      <Check className="w-8 h-8 text-white" />
-                    </motion.div>
-                  )}
-                  {isWrong && (
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="absolute top-3 right-3"
-                    >
-                      <X className="w-8 h-8 text-white" />
-                    </motion.div>
-                  )}
-                </motion.button>
-              );
-            })}
-          </div>
-        </motion.div>
+        <div className="flex-1 w-full relative">
+           {renderQuestionContent()}
+        </div>
       </div>
 
       <AnimatePresence>
         {showResults && (
           <motion.div
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-0 left-0 right-0 p-6 bg-black/90 backdrop-blur-xl"
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            className={`fixed bottom-0 left-0 right-0 h-48 z-50 flex items-center justify-center
+              ${roundResults.find(r => r.odId === "local" || r.odName === "나")?.isCorrect ? "bg-[#26890C]" : "bg-[#E21B3C]"}
+            `}
           >
-            <div className="max-w-4xl mx-auto text-center">
-              {selectedAnswer === currentQuestion.correctIndex ? (
-                <div className="text-green-400">
-                  <Check className="w-12 h-12 mx-auto mb-2" />
-                  <h3 className="text-2xl font-bold">정답!</h3>
-                  <p className="text-lg">+{Math.round(1000 * (timeLeft / (currentQuestion.timeLimit || 20)))}점</p>
-                </div>
-              ) : (
-                <div className="text-red-400">
-                  <X className="w-12 h-12 mx-auto mb-2" />
-                  <h3 className="text-2xl font-bold">오답</h3>
-                  <p className="text-lg">정답: {currentQuestion.options[currentQuestion.correctIndex]}</p>
-                </div>
-              )}
+            <div className="flex items-center gap-8 text-white">
+               {roundResults.find(r => r.odId === "local" || r.odName === "나")?.isCorrect ? (
+                 <>
+                   <div className="bg-white/20 p-4 rounded-full">
+                     <Check className="w-16 h-16" />
+                   </div>
+                   <div className="flex flex-col">
+                     <span className="text-5xl font-black">정답입니다!</span>
+                     <span className="text-2xl font-bold opacity-80">
+                       +{roundResults.find(r => r.odId === "local" || r.odName === "나")?.points} points
+                     </span>
+                     <motion.div 
+                        initial={{ y: 20, opacity: 0 }}
+                        animate={{ y: -50, opacity: 1 }}
+                        className="absolute text-4xl font-black text-[#FFD700] right-1/4"
+                     >
+                       +1000
+                     </motion.div>
+                   </div>
+                 </>
+               ) : (
+                 <>
+                   <div className="bg-white/20 p-4 rounded-full">
+                     <X className="w-16 h-16" />
+                   </div>
+                   <div className="flex flex-col">
+                     <span className="text-5xl font-black">오답입니다...</span>
+                     <span className="text-2xl font-bold opacity-80">다음 기회를 노려보세요!</span>
+                   </div>
+                 </>
+               )}
             </div>
           </motion.div>
         )}

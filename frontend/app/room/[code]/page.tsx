@@ -358,19 +358,38 @@ export default function RoomPage() {
         })) || [],
       }));
       
-      if (room?.gameMode === "lyrics_quiz") {
-        const quizRes = await fetch(`/api/songs/${queueItem.songId}/quiz`);
-        const quizData = await quizRes.json();
-        if (quizData.success && quizData.data.questions) {
-          dispatch(setQuizQuestions(quizData.data.questions.map((q: any) => ({
-            id: q.id,
-            lyrics: q.questionText,
-            options: [q.correctAnswer, ...q.wrongAnswers].sort(() => Math.random() - 0.5),
-            correctIndex: 0,
-            timeLimit: q.timeLimit,
-          }))));
-        }
-      }
+       if (room?.gameMode === "lyrics_quiz") {
+         // Get all ready songs in queue for mixed quiz generation
+         const readySongIds = songQueue
+           .filter(s => s.status === "ready" && s.songId)
+           .map(s => s.songId as string);
+         const allSongIds = [queueItem.songId, ...readySongIds.filter(id => id !== queueItem.songId)];
+         
+         const quizRes = await fetch(`/api/songs/quiz/generate?songIds=${allSongIds.join(",")}&count=10`);
+         const quizData = await quizRes.json();
+         if (quizData.success && quizData.data.questions) {
+           dispatch(setQuizQuestions(quizData.data.questions.map((q: any, idx: number) => {
+             const options = q.wrongAnswers && q.wrongAnswers.length > 0
+               ? [q.correctAnswer, ...q.wrongAnswers].sort(() => Math.random() - 0.5)
+               : undefined;
+             const correctIndex = options ? options.indexOf(q.correctAnswer) : undefined;
+             
+             return {
+               id: q.id || String(idx),
+               type: q.type || "lyrics_fill",
+               questionText: q.questionText,
+               options,
+               correctIndex,
+               correctAnswer: q.correctAnswer,
+               timeLimit: q.timeLimit || 10,
+               metadata: q.metadata,
+               lines: q.type === "lyrics_order" && q.wrongAnswers
+                 ? q.wrongAnswers.map((text: string, i: number) => ({ idx: i, text })).sort(() => Math.random() - 0.5)
+                 : undefined,
+             };
+           })));
+         }
+       }
       
       dispatch(removeFromQueue(queueItem.id));
       dispatch(setGameStatus("playing"));

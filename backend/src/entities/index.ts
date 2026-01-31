@@ -4,4 +4,4 @@ export { LyricsLine } from "./LyricsLine";
 export { Room, GameMode, RoomStatus } from "./Room";
 export { RoomParticipant } from "./RoomParticipant";
 export { Score } from "./Score";
-export { LyricsQuizQuestion } from "./LyricsQuizQuestion";
+export { LyricsQuizQuestion, QuizType } from "./LyricsQuizQuestion";
