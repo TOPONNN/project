@@ -33,6 +33,51 @@ const USER_TRAIL_SECONDS = 4;
 const RAIL_HEIGHT = 8;
 const LABEL_AREA_WIDTH = 54;
 
+type JudgmentLabel = "PERFECT" | "GREAT" | "GOOD" | "NORMAL" | "BAD";
+
+type GameStats = {
+  totalWords: number;
+  scoredWords: number;
+  perfectCount: number;
+  greatCount: number;
+  goodCount: number;
+  normalCount: number;
+  badCount: number;
+  maxCombo: number;
+  vibratoCount: number;
+};
+
+const createInitialStats = (): GameStats => ({
+  totalWords: 0,
+  scoredWords: 0,
+  perfectCount: 0,
+  greatCount: 0,
+  goodCount: 0,
+  normalCount: 0,
+  badCount: 0,
+  maxCombo: 0,
+  vibratoCount: 0,
+});
+
+const getGrade = (scorePercent: number) => {
+  if (scorePercent >= 95) return "SSS";
+  if (scorePercent >= 90) return "SS";
+  if (scorePercent >= 85) return "S";
+  if (scorePercent >= 80) return "A";
+  if (scorePercent >= 70) return "B";
+  return "C";
+};
+
+const JUDGMENT_SEGMENTS: { key: JudgmentLabel; label: string; color: string }[] = [
+  { key: "PERFECT", label: "PERFECT", color: "#FFD700" },
+  { key: "GREAT", label: "GREAT", color: "#34D399" },
+  { key: "GOOD", label: "GOOD", color: "#60A5FA" },
+  { key: "NORMAL", label: "NORMAL", color: "#A78BFA" },
+  { key: "BAD", label: "BAD", color: "#EF4444" },
+];
+
+const RADAR_LABELS = ["음정", "박자", "바이브레이션", "표현력", "안정도"];
+
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const midiToFreq = (midi: number) => 440 * Math.pow(2, (midi - 69) / 12);
 const freqToMidi = (frequency: number) => 69 + 12 * Math.log2(frequency / 440);
@@ -65,6 +110,9 @@ export default function PerfectScoreGame() {
   const judgementPopupsRef = useRef<
     { id: number; text: string; time: number; x: number; y: number; color: string }[]
   >([]);
+  const lastJudgmentRef = useRef<JudgmentLabel | null>(null);
+  const statsRef = useRef<GameStats>(createInitialStats());
+  const radarCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMicOn, setIsMicOn] = useState(true);
@@ -95,6 +143,12 @@ export default function PerfectScoreGame() {
     });
     return list;
   }, [lyrics]);
+
+  useEffect(() => {
+    statsRef.current = createInitialStats();
+    statsRef.current.totalWords = words.length;
+    lastJudgmentRef.current = null;
+  }, [currentSong, words.length]);
 
   const findCurrentLyricIndex = useCallback(
     (time: number): number => {
@@ -253,7 +307,10 @@ export default function PerfectScoreGame() {
     scoredResultsRef.current.clear();
     pitchSamplesRef.current.clear();
     judgementPopupsRef.current = [];
-  }, []);
+    lastJudgmentRef.current = null;
+    statsRef.current = createInitialStats();
+    statsRef.current.totalWords = words.length;
+  }, [words.length]);
 
   const handleSeek = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -402,6 +459,27 @@ export default function PerfectScoreGame() {
         }
       }
 
+      const wordDuration = word.endTime - word.startTime;
+      const hasVibrato = (word.voiced ?? 0) > 0.7 && wordDuration > 0.5;
+      const judgment: JudgmentLabel = result === "PERFECT"
+        ? "PERFECT"
+        : result === "GREAT"
+        ? "GREAT"
+        : result === "GOOD"
+        ? "GOOD"
+        : bestFreq > 0
+        ? "NORMAL"
+        : "BAD";
+
+      lastJudgmentRef.current = judgment;
+      statsRef.current.scoredWords += 1;
+      if (judgment === "PERFECT") statsRef.current.perfectCount += 1;
+      if (judgment === "GREAT") statsRef.current.greatCount += 1;
+      if (judgment === "GOOD") statsRef.current.goodCount += 1;
+      if (judgment === "NORMAL") statsRef.current.normalCount += 1;
+      if (judgment === "BAD") statsRef.current.badCount += 1;
+      if (hasVibrato) statsRef.current.vibratoCount += 1;
+
       scoredResultsRef.current.set(key, { result, scoredAt: now });
       pitchSamplesRef.current.delete(key);
 
@@ -419,6 +497,8 @@ export default function PerfectScoreGame() {
         setCombo(0);
         setScorePopups(prev => [...prev.slice(-3), { id: popupId, type: "MISS", points: 0 }]);
       }
+
+      statsRef.current.maxCombo = Math.max(statsRef.current.maxCombo, comboRef.current);
 
       const yForPopup = clamp(MIDI_MAX - word.midi, 0, MIDI_MAX - MIDI_MIN);
       judgementPopupsRef.current.push({
@@ -564,7 +644,7 @@ export default function PerfectScoreGame() {
         ctx.closePath();
       };
 
-      words.forEach(word => {
+      words.forEach((word, index) => {
         if (typeof word.midi !== "number") return;
         if (word.endTime < startTime || word.startTime > endTime) return;
 
@@ -622,6 +702,47 @@ export default function PerfectScoreGame() {
         ctx.lineWidth = 0.5;
         ctx.stroke();
         ctx.restore();
+
+        const wordDuration = word.endTime - word.startTime;
+        const hasVibrato = (word.voiced ?? 0) > 0.7 && wordDuration > 0.5;
+        const prevWord = words[index - 1];
+        const interval = typeof prevWord?.midi === "number" ? word.midi - prevWord.midi : 0;
+        const hasRise = interval >= 3;
+        const hasFall = interval <= -3;
+        const techniqueIcons: { label: string; color: string }[] = [];
+
+        if (hasVibrato) {
+          techniqueIcons.push({ label: "V", color: "#FF69B4" });
+        }
+        if (hasRise) {
+          techniqueIcons.push({ label: "↑", color: "#00FF88" });
+        } else if (hasFall) {
+          techniqueIcons.push({ label: "↓", color: "#FF8800" });
+        }
+
+        if (techniqueIcons.length > 0) {
+          const iconRadius = 8;
+          const iconSpacing = 4;
+          const baseX = xStart + barWidth - iconRadius - 2;
+          const baseY = yCenter;
+
+          ctx.save();
+          ctx.font = "bold 10px 'Noto Sans KR', 'Rajdhani', sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+
+          techniqueIcons.forEach((icon, iconIndex) => {
+            const iconX = baseX - iconIndex * (iconRadius * 2 + iconSpacing);
+            ctx.fillStyle = icon.color;
+            ctx.beginPath();
+            ctx.arc(iconX, baseY, iconRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(0,0,0,0.85)";
+            ctx.fillText(icon.label, iconX, baseY + 0.5);
+          });
+
+          ctx.restore();
+        }
       });
 
       const trail = userPitchTrailRef.current;
@@ -730,6 +851,133 @@ export default function PerfectScoreGame() {
     };
   }, [stopMicrophone]);
 
+  const statsSnapshot = statsRef.current;
+  const totalWords = statsSnapshot.totalWords || words.length;
+  const totalScored = statsSnapshot.scoredWords;
+  const perfectCount = statsSnapshot.perfectCount;
+  const greatCount = statsSnapshot.greatCount;
+  const goodCount = statsSnapshot.goodCount;
+  const normalCount = statsSnapshot.normalCount;
+  const badCount = statsSnapshot.badCount;
+  const accuracy = totalScored
+    ? Math.round(((perfectCount + greatCount + goodCount) / totalScored) * 100)
+    : 0;
+  const scorePercent = totalWords
+    ? Math.min(100, Math.round((score / (totalWords * 100)) * 100))
+    : 0;
+  const grade = getGrade(scorePercent);
+  const gradeColor = scorePercent >= 85
+    ? "#FFD700"
+    : scorePercent >= 80
+    ? "#34D399"
+    : scorePercent >= 70
+    ? "#60A5FA"
+    : "#EF4444";
+  const pitchScore = totalScored
+    ? Math.round(
+        (perfectCount * 100 + greatCount * 85 + goodCount * 70 + normalCount * 45 + badCount * 20) /
+          totalScored
+      )
+    : 0;
+  const rhythmScore = totalWords
+    ? Math.min(100, Math.round((statsSnapshot.maxCombo / totalWords) * 100))
+    : 0;
+  const vibratoScore = totalScored
+    ? Math.min(100, Math.round((statsSnapshot.vibratoCount / totalScored) * 100))
+    : 0;
+  const expressionScore = totalScored
+    ? Math.min(100, Math.round(((perfectCount + greatCount * 0.7) / totalScored) * 100))
+    : 0;
+  const stabilityScore = totalScored
+    ? Math.min(100, Math.round(((totalScored - badCount - normalCount * 0.5) / totalScored) * 100))
+    : 0;
+  const radarValues = [pitchScore, rhythmScore, vibratoScore, expressionScore, stabilityScore];
+  const segmentCounts: Record<JudgmentLabel, number> = {
+    PERFECT: perfectCount,
+    GREAT: greatCount,
+    GOOD: goodCount,
+    NORMAL: normalCount,
+    BAD: badCount,
+  };
+  const totalForBars = Math.max(1, totalScored);
+
+  useEffect(() => {
+    if (status !== "finished") return;
+    const canvas = radarCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const width = canvas.clientWidth || 220;
+    const height = canvas.clientHeight || 220;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const radius = Math.min(width, height) / 2 - 18;
+    const angleStep = (Math.PI * 2) / radarValues.length;
+    const startAngle = -Math.PI / 2;
+
+    ctx.strokeStyle = "rgba(255,255,255,0.15)";
+    ctx.lineWidth = 1;
+    for (let level = 1; level <= 4; level++) {
+      const levelRatio = level / 4;
+      ctx.beginPath();
+      radarValues.forEach((_, index) => {
+        const angle = startAngle + index * angleStep;
+        const x = centerX + Math.cos(angle) * radius * levelRatio;
+        const y = centerY + Math.sin(angle) * radius * levelRatio;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    radarValues.forEach((_, index) => {
+      const angle = startAngle + index * angleStep;
+      const x = centerX + Math.cos(angle) * radius;
+      const y = centerY + Math.sin(angle) * radius;
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    });
+
+    ctx.beginPath();
+    radarValues.forEach((value, index) => {
+      const ratio = clamp(value / 100, 0, 1);
+      const angle = startAngle + index * angleStep;
+      const x = centerX + Math.cos(angle) * radius * ratio;
+      const y = centerY + Math.sin(angle) * radius * ratio;
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    ctx.fillStyle = "rgba(0, 229, 255, 0.3)";
+    ctx.strokeStyle = "rgba(0, 229, 255, 0.85)";
+    ctx.lineWidth = 2;
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = "11px 'Noto Sans KR', 'Rajdhani', sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
+    RADAR_LABELS.forEach((label, index) => {
+      const angle = startAngle + index * angleStep;
+      const x = centerX + Math.cos(angle) * (radius + 14);
+      const y = centerY + Math.sin(angle) * (radius + 14);
+      const cos = Math.cos(angle);
+      ctx.textAlign = Math.abs(cos) < 0.2 ? "center" : cos > 0 ? "left" : "right";
+      ctx.textBaseline = Math.abs(Math.sin(angle)) < 0.2 ? "middle" : Math.sin(angle) > 0 ? "top" : "bottom";
+      ctx.fillText(label, x, y);
+    });
+  }, [expressionScore, pitchScore, rhythmScore, status, vibratoScore, stabilityScore]);
+
   if (!currentSong) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-gradient-to-b from-[#0E041A] via-[#050814] to-black text-white">
@@ -738,12 +986,6 @@ export default function PerfectScoreGame() {
       </div>
     );
   }
-
-  const totalScored = scoredResultsRef.current.size;
-  const perfectCount = Array.from(scoredResultsRef.current.values()).filter(item => item.result === "PERFECT").length;
-  const greatCount = Array.from(scoredResultsRef.current.values()).filter(item => item.result === "GREAT").length;
-  const goodCount = Array.from(scoredResultsRef.current.values()).filter(item => item.result === "GOOD").length;
-  const accuracy = totalScored ? Math.round(((perfectCount + greatCount + goodCount) / totalScored) * 100) : 0;
 
   return (
     <div className="flex flex-col w-full h-full bg-gradient-to-b from-[#0E041A] via-[#050814] to-black text-white overflow-hidden">
@@ -755,7 +997,7 @@ export default function PerfectScoreGame() {
         />
       )}
 
-      <div className="shrink-0 px-4 pt-4 pb-2 z-20">
+      <div className="shrink-0 pl-16 pr-56 pt-4 pb-2 z-20">
         <div className="flex items-start justify-between gap-4 select-none">
           <div className="flex flex-col items-start">
             <p className="text-sm text-[#BD00FF] tracking-[0.25em] font-black italic drop-shadow-[0_0_10px_rgba(189,0,255,0.6)]">
@@ -767,6 +1009,25 @@ export default function PerfectScoreGame() {
                 style={{ textShadow: "0 0 18px rgba(0, 229, 255, 0.45)" }}
               >
                 {score.toFixed(2)}
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="w-[200px] h-4 rounded-full overflow-hidden bg-white/10 border border-white/15 flex">
+                {JUDGMENT_SEGMENTS.map(segment => {
+                  const isActive = lastJudgmentRef.current === segment.key;
+                  return (
+                    <div
+                      key={segment.key}
+                      className="flex-1 transition-opacity duration-200"
+                      style={{ backgroundColor: segment.color, opacity: isActive ? 1 : 0.3 }}
+                    />
+                  );
+                })}
+              </div>
+              <div className="mt-1 flex justify-between text-[9px] uppercase tracking-[0.18em] text-white/50">
+                {JUDGMENT_SEGMENTS.map(segment => (
+                  <span key={segment.key}>{segment.label}</span>
+                ))}
               </div>
             </div>
           </div>
@@ -965,34 +1226,109 @@ export default function PerfectScoreGame() {
       <AnimatePresence>
         {status === "finished" && score > 0 && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
+            initial={{ opacity: 0, scale: 0.94 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 flex items-center justify-center bg-black/80"
+            className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-8"
           >
-            <div className="relative bg-white/10 border border-white/15 rounded-3xl px-10 py-8 text-center shadow-2xl backdrop-blur">
-              <div className="absolute top-0 left-0 right-0 h-1 rounded-t-3xl bg-gradient-to-r from-[#00E5FF] via-[#FFD700] to-[#BD00FF]" />
-              <p className="text-white/60 tracking-[0.4em] text-xs uppercase">Final Result</p>
-              <p className="text-5xl sm:text-6xl font-black text-[#FFD700] mt-4 tabular-nums">
-                {score.toFixed(2)}
-              </p>
-              <div className="mt-6 flex items-center justify-center gap-6 text-white/70 text-sm">
-                <div className="flex flex-col">
-                  <span className="uppercase tracking-[0.3em] text-xs text-white/50">Max Combo</span>
-                  <span className="text-lg font-bold text-[#FFA500]">{combo}</span>
+            <div className="relative w-full max-w-5xl rounded-[32px] border border-white/15 bg-white/10 p-6 sm:p-8 shadow-2xl backdrop-blur-2xl">
+              <div className="absolute top-0 left-0 right-0 h-1 rounded-t-[32px] bg-gradient-to-r from-[#00E5FF] via-[#FFD700] to-[#BD00FF]" />
+
+              <div className="flex flex-col lg:flex-row gap-8">
+                <div className="flex flex-col items-center lg:items-start gap-5">
+                  <div className="flex items-center gap-3">
+                    <p className="text-white/60 tracking-[0.4em] text-xs uppercase">Final Result</p>
+                    <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-[10px] font-bold tracking-[0.3em] text-white/70">
+                      {scorePercent}%
+                    </span>
+                  </div>
+                  <div className="flex items-end gap-4">
+                    <p className="text-5xl sm:text-6xl font-black text-[#FFD700] tabular-nums">
+                      {score.toFixed(2)}
+                    </p>
+                    <div className="text-xs text-white/50 uppercase tracking-[0.3em] mb-2">Score</div>
+                  </div>
+                  <div className="relative">
+                    <canvas ref={radarCanvasRef} className="w-[220px] h-[220px]" />
+                  </div>
                 </div>
-                <div className="w-px h-10 bg-white/10" />
-                <div className="flex flex-col">
-                  <span className="uppercase tracking-[0.3em] text-xs text-white/50">Accuracy</span>
-                  <span className="text-lg font-bold text-white">{accuracy}%</span>
+
+                <div className="flex-1 flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.35em] text-white/50">Grade</p>
+                      <div className="mt-1 px-4 py-2 rounded-2xl bg-white/10 border border-white/15 text-3xl font-black" style={{ color: gradeColor }}>
+                        {grade}
+                      </div>
+                    </div>
+                    <div className="px-4 py-3 rounded-2xl bg-white/10 border border-white/20 text-center">
+                      <p className="text-xs uppercase tracking-[0.3em] text-white/50">Accuracy</p>
+                      <p className="text-2xl font-bold text-[#00E5FF]">{accuracy}%</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="text-xs text-white/50 uppercase tracking-[0.2em]">Max Combo</p>
+                      <p className="text-lg font-bold text-[#FFA500]">{statsSnapshot.maxCombo}</p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="text-xs text-white/50 uppercase tracking-[0.2em]">Scored</p>
+                      <p className="text-lg font-bold text-white">
+                        {totalScored}/{totalWords}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="text-xs text-white/50 uppercase tracking-[0.2em]">Vibrato</p>
+                      <p className="text-lg font-bold text-pink-300">{statsSnapshot.vibratoCount}</p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="text-xs text-white/50 uppercase tracking-[0.2em]">Perfect</p>
+                      <p className="text-lg font-bold text-[#FFD700]">{perfectCount}</p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="text-xs text-white/50 uppercase tracking-[0.2em]">Great</p>
+                      <p className="text-lg font-bold text-[#34D399]">{greatCount}</p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="text-xs text-white/50 uppercase tracking-[0.2em]">Good</p>
+                      <p className="text-lg font-bold text-[#60A5FA]">{goodCount}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <button
-                onClick={() => window.dispatchEvent(new Event("kero:skipForward"))}
-                className="mt-8 px-6 py-2 bg-white/15 hover:bg-white/25 rounded-full text-white/90 transition-colors"
-              >
-                Next Song
-              </button>
+
+              <div className="mt-6 grid gap-3">
+                {JUDGMENT_SEGMENTS.map(segment => {
+                  const count = segmentCounts[segment.key];
+                  const percent = totalScored ? (count / totalForBars) * 100 : 0;
+                  return (
+                    <div key={segment.key} className="flex items-center gap-3">
+                      <div className="w-16 text-xs uppercase tracking-[0.2em] text-white/60">
+                        {segment.label}
+                      </div>
+                      <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+                        <div
+                          className="h-full"
+                          style={{ width: `${percent}%`, backgroundColor: segment.color }}
+                        />
+                      </div>
+                      <div className="w-10 text-right text-xs text-white/50 tabular-nums">
+                        {count}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-8 flex items-center justify-center">
+                <button
+                  onClick={() => window.dispatchEvent(new Event("kero:skipForward"))}
+                  className="px-6 py-2 rounded-full bg-white/15 hover:bg-white/25 text-white/90 transition-colors"
+                >
+                  Next Song
+                </button>
+              </div>
             </div>
           </motion.div>
         )}
