@@ -80,27 +80,36 @@ export function initializeSocket(httpServer: HttpServer): Server {
         const connectedParticipants = (room.participants || [])
           .filter((p: RoomParticipant) => p.isConnected);
 
-        socket.emit("room:joined", { 
-          room: {
-            id: room.id,
-            code: room.code,
-            name: room.name,
-            gameMode: room.gameMode,
-            status: room.status,
-            hostId: room.hostId,
-            participants: connectedParticipants.map((p: RoomParticipant) => ({
-              id: p.id,
-              nickname: p.nickname,
-              isHost: p.isHost,
-              score: p.score,
-            })),
-          },
-          participant: {
-            id: participant.id,
-            nickname: participant.nickname,
-            isHost: participant.isHost,
-          }
-        });
+         socket.emit("room:joined", { 
+           room: {
+             id: room.id,
+             code: room.code,
+             name: room.name,
+             gameMode: room.gameMode,
+             status: room.status,
+             hostId: room.hostId,
+             participants: connectedParticipants.map((p: RoomParticipant) => ({
+               id: p.id,
+               nickname: p.nickname,
+               isHost: p.isHost,
+               score: p.score,
+             })),
+           },
+           participant: {
+             id: participant.id,
+             nickname: participant.nickname,
+             isHost: participant.isHost,
+           }
+         });
+
+         // Send quiz state if game is in progress (for rejoin)
+         const quizState = lyricsQuizHandler.getQuizState(data.code);
+         if (quizState && quizState.currentQuestionIndex < quizState.questions.length) {
+           const remainingQuestions = quizState.questions.slice(quizState.currentQuestionIndex);
+           socket.emit("quiz:sync-state", {
+             questions: remainingQuestions,
+           });
+         }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "알 수 없는 오류";
         socket.emit("error", { message });

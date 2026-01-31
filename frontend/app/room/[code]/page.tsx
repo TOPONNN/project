@@ -540,6 +540,49 @@ export default function RoomPage() {
     );
   }
 
+  const avatarGradients = [
+    'from-purple-500 to-pink-500',
+    'from-blue-500 to-cyan-500', 
+    'from-green-500 to-emerald-500',
+    'from-orange-500 to-red-500',
+    'from-indigo-500 to-purple-500',
+    'from-pink-500 to-rose-500',
+    'from-teal-500 to-green-500',
+    'from-yellow-500 to-orange-500',
+  ];
+
+  const renderParticipants = (maxWidthClass = "max-w-lg") => (
+    participants.length > 0 && (
+      <div className={`w-full ${maxWidthClass} bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl ring-1 ring-white/5`}>
+        <div className="flex items-center gap-2 mb-4">
+          <Users className="w-5 h-5 text-white/70" />
+          <span className="font-bold text-white/80">참가자</span>
+          <span className="text-xs bg-white/10 text-white/60 px-2 py-0.5 rounded-full">{participants.length}명</span>
+        </div>
+        <div className="space-y-2">
+          {participants.map((p: any, idx: number) => (
+            <motion.div 
+              key={p.id}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: idx * 0.05 }}
+              className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
+            >
+              <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarGradients[idx % avatarGradients.length]} flex items-center justify-center text-sm font-bold text-white shrink-0`}>
+                {p.nickname?.charAt(0) || '?'}
+              </div>
+              <span className="text-white font-medium truncate">{p.nickname}</span>
+              {p.isHost && (
+                <span className="text-[10px] font-bold bg-[#FFD700]/20 text-[#FFD700] px-2 py-0.5 rounded-full shrink-0">HOST</span>
+              )}
+              <div className="ml-auto w-2 h-2 rounded-full bg-green-400 shrink-0 shadow-[0_0_8px_rgba(74,222,128,0.5)]" />
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    )
+  );
+
   return (
     <div className="min-h-screen bg-black text-white overflow-hidden relative">
       {/* 배경 뮤비 */}
@@ -594,7 +637,7 @@ export default function RoomPage() {
       </header>
 
       {room?.gameMode === "lyrics_quiz" ? (
-        <main className="relative z-10 flex items-center justify-center min-h-[calc(100vh-80px)] p-4">
+        <main className="relative z-10 flex flex-col items-center justify-center min-h-[calc(100vh-80px)] p-4 gap-4">
           <div className="w-full max-w-lg bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl ring-1 ring-white/5 text-center">
             <div className="w-20 h-20 rounded-2xl bg-[#FF6B6B]/20 flex items-center justify-center mx-auto mb-6">
               <MessageSquareText className="w-10 h-10 text-[#FF6B6B]" />
@@ -616,9 +659,10 @@ export default function RoomPage() {
                )}
              </button>
           </div>
+          {renderParticipants()}
         </main>
       ) : (
-        <main className="relative z-10 flex items-center justify-center min-h-[calc(100vh-80px)] p-4">
+        <main className="relative z-10 flex flex-col items-center justify-center min-h-[calc(100vh-80px)] p-4 gap-4">
           <div className="w-full max-w-2xl bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl ring-1 ring-white/5">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
@@ -755,6 +799,7 @@ export default function RoomPage() {
               </div>
             )}
           </div>
+          {renderParticipants("max-w-2xl")}
         </main>
       )}
 
