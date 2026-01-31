@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { AnimatePresence, motion } from "framer-motion";
-import { Play, Pause, Volume2, Mic, MicOff, RotateCcw, SkipForward, AlertCircle, Music } from "lucide-react";
+import { Play, Pause, Volume2, Mic, MicOff, RotateCcw, SkipForward, AlertCircle } from "lucide-react";
 import type { RootState } from "@/store";
 import { updateCurrentTime, setGameStatus } from "@/store/slices/gameSlice";
 
@@ -24,12 +24,10 @@ interface LyricsLine {
   words?: LyricsWord[];
 }
 
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const VISIBLE_WINDOW = 8;
 const HIT_LINE_RATIO = 0.18;
 const USER_TRAIL_SECONDS = 3;
-const MIDI_MIN = 36;
-const MIDI_MAX = 95;
-const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 export default function PerfectScoreGame() {
   const dispatch = useDispatch();
@@ -37,38 +35,42 @@ export default function PerfectScoreGame() {
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const rafRef = useRef<number | null>(null);
-  
-  const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  
+  const timeAnimationRef = useRef<number | null>(null);
+  const pitchAnimationRef = useRef<number | null>(null);
+  const drawAnimationRef = useRef<number | null>(null);
   const lastTimeRef = useRef(0);
+  const scoredWordsRef = useRef<Set<string>>(new Set());
+  const scoredResultsRef = useRef<Map<string, string>>(new Map());
   const scoreRef = useRef(0);
   const comboRef = useRef(0);
-  const isMicOnRef = useRef(false);
   const userPitchTrailRef = useRef<{ time: number; midi: number }[]>([]);
-  const scoredResultsRef = useRef<Map<string, string>>(new Map());
   const latestPitchRef = useRef<{ frequency: number; time: number }>({ frequency: 0, time: 0 });
-  
+  const lastPitchUpdateRef = useRef(0);
+  const isMicOnRef = useRef(false);
+  const lastRawPitchesRef = useRef<number[]>([]);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMicOn, setIsMicOn] = useState(true);
   const [localTime, setLocalTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [audioLoaded, setAudioLoaded] = useState(false);
+  const [currentLyricIndex, setCurrentLyricIndex] = useState(-1);
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState(0);
-  const [currentLyricIndex, setCurrentLyricIndex] = useState(-1);
-  const [volume, setVolume] = useState(1);
   const [scorePopups, setScorePopups] = useState<{ id: number; type: string; points: number }[]>([]);
+  const [volume, setVolume] = useState(1);
+  const [audioLoaded, setAudioLoaded] = useState(false);
+  const [duration, setDuration] = useState(0);
 
   const lyrics: LyricsLine[] = currentSong?.lyrics || [];
   const audioUrl = currentSong?.instrumentalUrl || currentSong?.audioUrl;
+  const progress = duration ? (localTime / duration) * 100 : 0;
 
   isMicOnRef.current = isMicOn;
 
-  const flatWords = useMemo(() => {
+  const words = useMemo(() => {
+    if (!lyrics.length) return [] as Array<LyricsWord & { lineIndex: number; wordIndex: number }>;
     const list: Array<LyricsWord & { lineIndex: number; wordIndex: number }> = [];
     lyrics.forEach((line, lineIndex) => {
       line.words?.forEach((word, wordIndex) => {
@@ -80,8 +82,48 @@ export default function PerfectScoreGame() {
     return list;
   }, [lyrics]);
 
+  const midiRange = useMemo(() => ({ min: 36, max: 95 }), []);
+
+  const findCurrentLyricIndex = useCallback((time: number): number => {
+    if (lyrics.length === 0) return -1;
+    if (time < lyrics[0].startTime) return 0;
+
+    for (let i = 0; i < lyrics.length; i++) {
+      const line = lyrics[i];
+      const nextLine = lyrics[i + 1];
+
+      if (time >= line.startTime && time <= line.endTime) {
+        return i;
+      }
+
+      if (time > line.endTime) {
+        if (nextLine && time < nextLine.startTime) {
+          const gapDuration = nextLine.startTime - line.endTime;
+          if (time <= line.endTime + 0.5) return i;
+          if (gapDuration <= 3.0) return i + 1;
+          return -1;
+        }
+        if (!nextLine) {
+          if (time <= line.endTime + 2.0) return i;
+          return -1;
+        }
+      }
+    }
+
+    return -1;
+  }, [lyrics]);
+
+  const currentLine = currentLyricIndex >= 0 ? lyrics[currentLyricIndex] : null;
+  const nextLine = useMemo(() => {
+    if (currentLyricIndex >= 0) {
+      return lyrics[currentLyricIndex + 1] || null;
+    }
+    return lyrics.find(line => line.startTime > localTime) || null;
+  }, [currentLyricIndex, lyrics, localTime]);
+
   useEffect(() => {
     if (!audioRef.current) return;
+
     const audio = audioRef.current;
     audio.volume = volume;
 
@@ -91,6 +133,7 @@ export default function PerfectScoreGame() {
     };
 
     const handleCanPlay = () => setAudioLoaded(true);
+
     const handleLoadedMetadata = () => {
       if (audio.duration && isFinite(audio.duration)) {
         setDuration(audio.duration);
@@ -112,30 +155,95 @@ export default function PerfectScoreGame() {
     if (status === "playing" && audioRef.current && !isPlaying && audioLoaded) {
       audioRef.current.play().catch(console.error);
       setIsPlaying(true);
-      if (isMicOn && !audioContextRef.current) {
-        startMicrophone();
-      }
     }
-  }, [status, audioLoaded, isPlaying, isMicOn]);
+  }, [status, audioLoaded, isPlaying]);
+
+  useEffect(() => {
+    if (!isPlaying || !audioRef.current) {
+      if (timeAnimationRef.current) {
+        cancelAnimationFrame(timeAnimationRef.current);
+        timeAnimationRef.current = null;
+      }
+      return;
+    }
+
+    const updateTime = () => {
+      if (!audioRef.current || !isPlaying) return;
+      const time = audioRef.current.currentTime;
+      if (Math.abs(time - lastTimeRef.current) > 0.016) {
+        if (Math.floor(time * 10) !== Math.floor(lastTimeRef.current * 10)) {
+          dispatch(updateCurrentTime(time));
+        }
+        lastTimeRef.current = time;
+        setLocalTime(time);
+
+        const newIndex = findCurrentLyricIndex(time);
+        if (newIndex !== currentLyricIndex) {
+          setCurrentLyricIndex(newIndex);
+        }
+
+        if (newIndex >= 0 && lyrics[newIndex]?.words?.length) {
+          const wordIndex = lyrics[newIndex].words!.findIndex(
+            word => time >= word.startTime && time <= word.endTime
+          );
+          if (wordIndex >= 0) {
+            const wordKey = `${newIndex}-${wordIndex}`;
+            if (!scoredWordsRef.current.has(wordKey)) {
+              scoredWordsRef.current.add(wordKey);
+              const word = lyrics[newIndex].words![wordIndex];
+              const targetMidi = word.midi;
+              if (typeof targetMidi === "number") {
+                const targetFreq = 440 * Math.pow(2, (targetMidi - 69) / 12);
+                const userFreq = latestPitchRef.current.frequency;
+                const hasUserPitch = userFreq > 0;
+                const cents = hasUserPitch ? 1200 * Math.log2(userFreq / targetFreq) : 999;
+                const absCents = Math.abs(cents);
+                const type = absCents < 10 ? "PERFECT" : absCents < 25 ? "GREAT" : absCents < 50 ? "GOOD" : "MISS";
+                
+                // Store result for visualization
+                scoredResultsRef.current.set(wordKey, type);
+
+                const basePoints = type === "PERFECT" ? 100 : type === "GREAT" ? 75 : type === "GOOD" ? 50 : 0;
+                if (basePoints > 0 && isMicOnRef.current) {
+                  const mult = Math.min(2, 1 + comboRef.current * 0.1);
+                  const points = Math.round(basePoints * mult);
+                  comboRef.current += 1;
+                  scoreRef.current += points;
+                  setScore(scoreRef.current);
+                  setCombo(comboRef.current);
+                  setScorePopups(prev => [...prev.slice(-3), { id: Date.now(), type, points }]);
+                } else {
+                  comboRef.current = 0;
+                  setCombo(0);
+                  setScorePopups(prev => [...prev.slice(-3), { id: Date.now(), type: "MISS", points: 0 }]);
+                }
+              }
+            }
+          }
+        }
+      }
+      timeAnimationRef.current = requestAnimationFrame(updateTime);
+    };
+
+    timeAnimationRef.current = requestAnimationFrame(updateTime);
+    return () => {
+      if (timeAnimationRef.current) {
+        cancelAnimationFrame(timeAnimationRef.current);
+        timeAnimationRef.current = null;
+      }
+    };
+  }, [currentLyricIndex, dispatch, findCurrentLyricIndex, isPlaying, lyrics]);
 
   const startMicrophone = useCallback(async () => {
     try {
-      if (audioContextRef.current?.state === 'suspended') {
-        await audioContextRef.current.resume();
-      }
-      if (mediaStreamRef.current) return;
-
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
 
-      const ctx = new AudioContext();
-      audioContextRef.current = ctx;
-      const source = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 2048;
-      source.connect(analyser);
-      analyserRef.current = analyser;
-      
+      audioContextRef.current = new AudioContext();
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      analyserRef.current.fftSize = 2048;
+      source.connect(analyserRef.current);
       setIsMicOn(true);
     } catch (error) {
       console.error("Microphone access denied:", error);
@@ -146,20 +254,51 @@ export default function PerfectScoreGame() {
   const stopMicrophone = useCallback(() => {
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach(track => track.stop());
-      mediaStreamRef.current = null;
     }
     if (audioContextRef.current) {
       audioContextRef.current.close();
-      audioContextRef.current = null;
     }
-    analyserRef.current = null;
+    if (pitchAnimationRef.current) {
+      cancelAnimationFrame(pitchAnimationRef.current);
+    }
     setIsMicOn(false);
   }, []);
 
-  const toggleMic = () => {
-    if (isMicOn) stopMicrophone();
-    else startMicrophone();
-  };
+  useEffect(() => {
+    if (!isMicOn || !analyserRef.current || !audioContextRef.current) return;
+
+    const detectPitch = () => {
+      if (!analyserRef.current || !audioContextRef.current) return;
+      const bufferLength = analyserRef.current.fftSize;
+      const buffer = new Float32Array(bufferLength);
+      analyserRef.current.getFloatTimeDomainData(buffer);
+      const frequency = autoCorrelate(buffer, audioContextRef.current.sampleRate);
+      const now = audioRef.current?.currentTime ?? localTime;
+
+      if (frequency > 0) {
+        latestPitchRef.current = { frequency, time: now };
+        const rawMidi = 69 + 12 * Math.log2(frequency / 440);
+        
+        // Quantize to nearest semitone for cleaner visualization
+        const quantizedMidi = Math.round(rawMidi);
+        
+        userPitchTrailRef.current.push({ time: now, midi: quantizedMidi });
+        if (now - lastPitchUpdateRef.current > 0.08) {
+          lastPitchUpdateRef.current = now;
+        }
+      }
+
+      userPitchTrailRef.current = userPitchTrailRef.current.filter(p => now - p.time <= USER_TRAIL_SECONDS);
+      pitchAnimationRef.current = requestAnimationFrame(detectPitch);
+    };
+
+    detectPitch();
+    return () => {
+      if (pitchAnimationRef.current) {
+        cancelAnimationFrame(pitchAnimationRef.current);
+      }
+    };
+  }, [isMicOn, localTime]);
 
   const autoCorrelate = (buffer: Float32Array, sampleRate: number): number => {
     let size = buffer.length;
@@ -213,428 +352,358 @@ export default function PerfectScoreGame() {
     return sampleRate / maxpos;
   };
 
-  const findCurrentLyricIndex = useCallback((time: number): number => {
-    if (lyrics.length === 0) return -1;
-    if (time < lyrics[0].startTime) return 0;
-    
-    for (let i = 0; i < lyrics.length; i++) {
-      const line = lyrics[i];
-      const nextLine = lyrics[i + 1];
-      
-      if (time >= line.startTime && time <= line.endTime) return i;
-      
-      if (time > line.endTime) {
-        if (!nextLine) {
-          return time <= line.endTime + 2.0 ? i : -1;
-        }
-        const gap = nextLine.startTime - line.endTime;
-        if (time <= line.endTime + 0.5) return i;
-        if (gap <= 3.0) return i + 1;
-        return -1;
+  const togglePlay = useCallback(() => {
+    if (!audioRef.current || !audioLoaded) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch(console.error);
+      if (isMicOn && !analyserRef.current) {
+        startMicrophone();
       }
     }
-    return -1;
-  }, [lyrics]);
+    setIsPlaying(!isPlaying);
+  }, [audioLoaded, isPlaying, isMicOn, startMicrophone]);
 
-  const loop = useCallback(() => {
-    if (!canvasRef.current || !containerRef.current) {
-       rafRef.current = requestAnimationFrame(loop);
-       return;
-    }
+  const handleRestart = useCallback(() => {
+    if (!audioRef.current) return;
+    audioRef.current.currentTime = 0;
+    setLocalTime(0);
+    setCurrentLyricIndex(-1);
+    setScore(0);
+    setCombo(0);
+    scoreRef.current = 0;
+    comboRef.current = 0;
+    scoredWordsRef.current.clear();
+    scoredResultsRef.current.clear();
+    userPitchTrailRef.current = [];
+    lastRawPitchesRef.current = [];
+  }, []);
 
-    const audio = audioRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let currentTime = localTime;
-    if (isPlaying && audio) {
-        currentTime = audio.currentTime;
-        if (Math.abs(currentTime - lastTimeRef.current) > 0.05) {
-            lastTimeRef.current = currentTime;
-            setLocalTime(currentTime);
-            dispatch(updateCurrentTime(currentTime));
-            
-            const idx = findCurrentLyricIndex(currentTime);
-            if (idx !== currentLyricIndex) {
-                setCurrentLyricIndex(idx);
-            }
-        }
-    }
-
-    if (isMicOnRef.current && analyserRef.current && audioContextRef.current) {
-        const buffer = new Float32Array(analyserRef.current.fftSize);
-        analyserRef.current.getFloatTimeDomainData(buffer);
-        const frequency = autoCorrelate(buffer, audioContextRef.current.sampleRate);
-        
-        if (frequency > 0) {
-            latestPitchRef.current = { frequency, time: currentTime };
-            const rawMidi = 69 + 12 * Math.log2(frequency / 440);
-            const quantizedMidi = Math.round(rawMidi);
-            
-            userPitchTrailRef.current.push({ time: currentTime, midi: quantizedMidi });
-        }
-        
-        const trailStart = currentTime - USER_TRAIL_SECONDS;
-        if (userPitchTrailRef.current.length > 0 && userPitchTrailRef.current[0].time < trailStart) {
-             userPitchTrailRef.current = userPitchTrailRef.current.filter(p => p.time >= trailStart);
-        }
-    }
-
-    if (isPlaying) {
-        flatWords.forEach(word => {
-            const wordKey = `${word.lineIndex}-${word.wordIndex}`;
-            if (currentTime >= word.startTime && currentTime <= word.endTime) {
-                if (!scoredResultsRef.current.has(wordKey)) {
-                   const targetMidi = word.midi!;
-                   const userFreq = latestPitchRef.current.frequency;
-                   
-                   if (userFreq > 0) {
-                        const targetFreq = 440 * Math.pow(2, (targetMidi - 69) / 12);
-                        const cents = 1200 * Math.log2(userFreq / targetFreq);
-                        const absCents = Math.abs(cents);
-                        
-                        let type = "";
-                        if (absCents < 10) type = "PERFECT";
-                        else if (absCents < 25) type = "GREAT";
-                        else if (absCents < 50) type = "GOOD";
-                        
-                        if (type) {
-                            scoredResultsRef.current.set(wordKey, type);
-                            
-                            const basePoints = type === "PERFECT" ? 100 : type === "GREAT" ? 75 : 50;
-                            const multiplier = Math.min(2, 1 + comboRef.current * 0.1);
-                            const points = Math.round(basePoints * multiplier);
-                            
-                            comboRef.current += 1;
-                            scoreRef.current += points;
-                            
-                            setScore(scoreRef.current);
-                            setCombo(comboRef.current);
-                            setScorePopups(prev => [...prev.slice(-4), { id: Date.now(), type, points }]);
-                        }
-                   }
-                }
-            } else if (currentTime > word.endTime) {
-                if (!scoredResultsRef.current.has(wordKey)) {
-                     scoredResultsRef.current.set(wordKey, "MISS");
-                     comboRef.current = 0;
-                     setCombo(0);
-                }
-            }
-        });
-    }
-
-    const parent = containerRef.current;
-    if (parent) {
-        const rect = parent.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
-        if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
-            canvas.width = rect.width * dpr;
-            canvas.height = rect.height * dpr;
-            ctx.scale(dpr, dpr);
-            canvas.style.width = `${rect.width}px`;
-            canvas.style.height = `${rect.height}px`;
-        }
-    }
-    
-    const width = canvas.width / (window.devicePixelRatio || 1);
-    const height = canvas.height / (window.devicePixelRatio || 1);
-
-    ctx.clearRect(0, 0, width, height);
-    
-    const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
-    bgGrad.addColorStop(0, "#0a0e27");
-    bgGrad.addColorStop(1, "#000519");
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, width, height);
-
-    const topPadding = 20;
-    const bottomPadding = 20;
-    const staffHeight = height - topPadding - bottomPadding;
-    const labelAreaWidth = 54;
-    const hitLineX = Math.max(width * HIT_LINE_RATIO, labelAreaWidth + 10);
-    const pixelsPerSecond = width / VISIBLE_WINDOW;
-    
-    const leftWindow = VISIBLE_WINDOW * HIT_LINE_RATIO;
-    const rightWindow = VISIBLE_WINDOW - leftWindow;
-    const startTime = currentTime - leftWindow;
-    const endTime = currentTime + rightWindow;
-
-    const midiToY = (midi: number) => {
-        const range = MIDI_MAX - MIDI_MIN;
-        return topPadding + ((MIDI_MAX - midi) / range) * staffHeight;
-    };
-
-    const beatInterval = 1.0;
-    const firstBeat = Math.ceil(startTime / beatInterval) * beatInterval;
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = "rgba(255,255,255,0.03)";
-    ctx.beginPath();
-    for (let t = firstBeat; t < endTime; t += beatInterval) {
-        const x = hitLineX + (t - currentTime) * pixelsPerSecond;
-        ctx.moveTo(x, topPadding);
-        ctx.lineTo(x, height - bottomPadding);
-    }
-    ctx.stroke();
-
-    ctx.textAlign = "right";
-    ctx.textBaseline = "middle";
-    const fontLabel = "bold 11px 'Noto Sans KR', sans-serif";
-    const fontSubLabel = "9px 'Noto Sans KR', sans-serif";
-
-    for (let m = MIDI_MIN; m <= MIDI_MAX; m++) {
-        const y = midiToY(m);
-        const noteIdx = m % 12;
-        const isC = noteIdx === 0;
-        const isNatural = [0, 2, 4, 5, 7, 9, 11].includes(noteIdx);
-        
-        ctx.beginPath();
-        if (isC) {
-            ctx.lineWidth = 1.5;
-            ctx.strokeStyle = "rgba(255,255,255,0.25)";
-            ctx.moveTo(labelAreaWidth, y);
-            ctx.lineTo(width, y);
-            ctx.stroke();
-            
-            ctx.fillStyle = "rgba(255,255,255,0.8)";
-            ctx.font = fontLabel;
-            const octave = Math.floor(m / 12) - 1;
-            ctx.fillText(`C${octave}`, labelAreaWidth - 6, y);
-        } else if (isNatural) {
-            ctx.lineWidth = 0.8;
-            ctx.strokeStyle = "rgba(255,255,255,0.10)";
-            ctx.moveTo(labelAreaWidth, y);
-            ctx.lineTo(width, y);
-            ctx.stroke();
-            
-            ctx.fillStyle = "rgba(255,255,255,0.45)";
-            ctx.font = fontSubLabel;
-            const noteName = NOTE_NAMES[noteIdx];
-            const octave = Math.floor(m / 12) - 1;
-            ctx.fillText(`${noteName}${octave}`, labelAreaWidth - 6, y);
-        } else {
-            ctx.lineWidth = 0.5;
-            ctx.strokeStyle = "rgba(255,255,255,0.04)";
-            ctx.setLineDash([2, 4]);
-            ctx.moveTo(labelAreaWidth, y);
-            ctx.lineTo(width, y);
-            ctx.stroke();
-            ctx.setLineDash([]);
-        }
-    }
-
-    ctx.save();
-    ctx.shadowColor = "rgba(0, 229, 255, 0.5)";
-    ctx.shadowBlur = 15;
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(hitLineX, 0);
-    ctx.lineTo(hitLineX, height);
-    ctx.stroke();
-    ctx.restore();
-
-    const drawPill = (x: number, y: number, w: number, h: number) => {
-        const r = h / 2;
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.lineTo(x + w - r, y);
-        ctx.arc(x + w - r, y + r, r, -Math.PI / 2, Math.PI / 2);
-        ctx.lineTo(x + r, y + h);
-        ctx.arc(x + r, y + r, r, Math.PI / 2, -Math.PI / 2);
-        ctx.closePath();
-    };
-
-    flatWords.forEach(word => {
-        if (word.endTime < startTime || word.startTime > endTime) return;
-
-        const xStart = hitLineX + (word.startTime - currentTime) * pixelsPerSecond;
-        const xEnd = hitLineX + (word.endTime - currentTime) * pixelsPerSecond;
-        const w = Math.max(10, xEnd - xStart);
-        const yCenter = midiToY(word.midi!);
-        const h = 10;
-        const yTop = yCenter - h / 2;
-
-        const wordKey = `${word.lineIndex}-${word.wordIndex}`;
-        const result = scoredResultsRef.current.get(wordKey);
-        const isPast = word.endTime < currentTime;
-        const isActive = currentTime >= word.startTime && currentTime <= word.endTime;
-
-        let fillStyle: string | CanvasGradient;
-        let glowColor = "rgba(0,0,0,0)";
-        let shadowBlur = 0;
-
-        const createGrad = (c1: string, c2: string) => {
-            const g = ctx.createLinearGradient(0, yTop, 0, yTop + h);
-            g.addColorStop(0, c1);
-            g.addColorStop(1, c2);
-            return g;
-        };
-
-        if (result === "PERFECT" || result === "GREAT") {
-            fillStyle = createGrad("rgba(255, 215, 0, 0.9)", "rgba(255, 160, 0, 0.9)");
-            glowColor = "rgba(255, 215, 0, 0.6)";
-            shadowBlur = 12;
-        } else if (result === "GOOD") {
-            fillStyle = createGrad("rgba(100, 180, 255, 0.8)", "rgba(50, 130, 255, 0.8)");
-        } else if (result === "MISS" || (isPast && !result)) {
-            fillStyle = "rgba(100, 100, 100, 0.3)";
-        } else if (isActive) {
-            fillStyle = createGrad("rgba(0, 255, 255, 0.9)", "rgba(0, 229, 255, 0.9)");
-            glowColor = "rgba(0, 229, 255, 0.9)";
-            shadowBlur = 15;
-        } else {
-            fillStyle = "rgba(0, 200, 255, 0.5)";
-        }
-
-        ctx.save();
-        if (shadowBlur > 0) {
-            ctx.shadowColor = glowColor;
-            ctx.shadowBlur = shadowBlur;
-        }
-        ctx.fillStyle = fillStyle;
-        drawPill(xStart, yTop, w, h);
-        ctx.fill();
-
-        if (isActive) {
-            ctx.strokeStyle = "white";
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-        }
-        ctx.restore();
-    });
-
-    const trail = userPitchTrailRef.current;
-    if (trail.length > 1) {
-        ctx.save();
-        ctx.strokeStyle = "#00E5FF";
-        ctx.lineWidth = 3;
-        ctx.shadowColor = "rgba(0, 229, 255, 0.6)";
-        ctx.shadowBlur = 12;
-        ctx.lineJoin = "miter";
-        ctx.beginPath();
-        
-        let started = false;
-        
-        for (let i = 0; i < trail.length; i++) {
-            const point = trail[i];
-            const x = hitLineX + (point.time - currentTime) * pixelsPerSecond;
-            const y = midiToY(point.midi);
-            
-            if (x < 0) continue;
-
-            if (!started) {
-                ctx.moveTo(x, y);
-                started = true;
-            } else {
-                const prev = trail[i - 1];
-                const prevY = midiToY(prev.midi);
-                
-                if (point.time - prev.time > 0.3 || Math.abs(point.midi - prev.midi) > 12) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, prevY);
-                    ctx.lineTo(x, y);
-                }
-            }
-        }
-        ctx.stroke();
-
-        const last = trail[trail.length - 1];
-        if (last && Math.abs(last.time - currentTime) < 0.1) {
-            const headX = hitLineX + (last.time - currentTime) * pixelsPerSecond;
-            const headY = midiToY(last.midi);
-            
-            ctx.fillStyle = "#FFF";
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = "white";
-            ctx.beginPath();
-            ctx.arc(headX, headY, 4, 0, Math.PI * 2);
-            ctx.fill();
-            
-            if (Math.abs(headX - hitLineX) < 10) {
-                ctx.fillStyle = "#00E5FF";
-                ctx.beginPath();
-                ctx.arc(headX, headY, 6, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        }
-        ctx.restore();
-    }
-    
-    rafRef.current = requestAnimationFrame(loop);
-  }, [isPlaying, localTime, lyrics, flatWords, currentLyricIndex, dispatch, findCurrentLyricIndex]);
-
-  useEffect(() => {
-    rafRef.current = requestAnimationFrame(loop);
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, [loop]);
-
-  useEffect(() => {
-    return () => {
-       stopMicrophone();
-       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, [stopMicrophone]);
-
-  const handleRestart = () => {
-    if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        setLocalTime(0);
-        setCurrentLyricIndex(-1);
-        setScore(0);
-        setCombo(0);
-        scoreRef.current = 0;
-        comboRef.current = 0;
-        scoredResultsRef.current.clear();
-        userPitchTrailRef.current = [];
-        setScorePopups([]);
-    }
-  };
-
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleSeek = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!audioRef.current || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const percent = (e.clientX - rect.left) / rect.width;
     const newTime = percent * duration;
     audioRef.current.currentTime = newTime;
     setLocalTime(newTime);
-  };
+  }, [duration]);
 
-  const togglePlay = () => {
-    if (!audioRef.current || !audioLoaded) return;
-    if (isPlaying) {
-        audioRef.current.pause();
-    } else {
-        audioRef.current.play().catch(console.error);
-        if (isMicOn && !analyserRef.current) startMicrophone();
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const parent = canvas.parentElement;
+    if (!parent) return;
+    const resize = () => {
+      const rect = parent.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+    };
+
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(parent);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Helper for drawing pill shapes (rounded rectangles)
+    const drawPill = (x: number, y: number, width: number, height: number) => {
+      const r = height / 2;
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + width - r, y);
+      ctx.arc(x + width - r, y + r, r, -Math.PI / 2, Math.PI / 2);
+      ctx.lineTo(x + r, y + height);
+      ctx.arc(x + r, y + r, r, Math.PI / 2, -Math.PI / 2);
+      ctx.closePath();
+    };
+
+    const draw = () => {
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      ctx.clearRect(0, 0, width, height);
+
+      // Darker, more blue-tinted background
+      ctx.fillStyle = "rgba(0, 5, 25, 0.75)";
+      ctx.fillRect(0, 0, width, height);
+
+      const leftPadding = 54;
+      const topPadding = 24;
+      const bottomPadding = 24;
+      const staffHeight = height - topPadding - bottomPadding;
+      const hitLineX = Math.max(width * HIT_LINE_RATIO, leftPadding + 16);
+      const pixelsPerSecond = width / VISIBLE_WINDOW;
+      const leftWindow = VISIBLE_WINDOW * HIT_LINE_RATIO;
+      const rightWindow = VISIBLE_WINDOW - leftWindow;
+      const now = audioRef.current?.currentTime ?? localTime;
+      const startTime = now - leftWindow;
+      const endTime = now + rightWindow;
+
+      // Draw vertical beat lines (faint)
+      const beatInterval = 1.0; // Assume 1 second for simplicity or could use BPM if available
+      const firstBeatTime = Math.ceil(startTime / beatInterval) * beatInterval;
+      ctx.strokeStyle = "rgba(255,255,255,0.03)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let t = firstBeatTime; t < endTime; t += beatInterval) {
+        const x = hitLineX + (t - now) * pixelsPerSecond;
+        ctx.moveTo(x, topPadding);
+        ctx.lineTo(x, height - bottomPadding);
+      }
+      ctx.stroke();
+
+      const midiToY = (midi: number) => {
+        const range = Math.max(1, midiRange.max - midiRange.min);
+        return topPadding + ((midiRange.max - midi) / range) * staffHeight;
+      };
+
+      // --- 1. Draw Grid Lines (Every semitone) ---
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+
+      for (let midi = midiRange.min; midi <= midiRange.max; midi += 1) {
+        const y = midiToY(midi);
+        const noteIdx = midi % 12;
+        const isC = noteIdx === 0;
+        const isNatural = [0, 2, 4, 5, 7, 9, 11].includes(noteIdx);
+        
+        ctx.beginPath();
+        ctx.moveTo(leftPadding, y);
+        ctx.lineTo(width, y);
+
+        if (isC) {
+          // Bold white line for C notes
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = "rgba(255,255,255,0.25)";
+          ctx.setLineDash([]);
+          ctx.stroke();
+
+          // Note Label
+          const octave = Math.floor(midi / 12) - 1;
+          const label = `C${octave}`;
+          ctx.fillStyle = "rgba(255,255,255,0.8)";
+          ctx.font = "bold 11px 'Noto Sans KR', sans-serif";
+          ctx.fillText(label, 10, y);
+        } else if (isNatural) {
+          // Thin line for natural notes
+          ctx.lineWidth = 0.8;
+          ctx.strokeStyle = "rgba(255,255,255,0.10)";
+          ctx.setLineDash([]);
+          ctx.stroke();
+
+          // Note Label
+          const noteName = NOTE_NAMES[noteIdx];
+          const octave = Math.floor(midi / 12) - 1;
+          ctx.fillStyle = "rgba(255,255,255,0.45)";
+          ctx.font = "9px 'Noto Sans KR', sans-serif";
+          ctx.fillText(`${noteName}${octave}`, 12, y);
+        } else {
+          // Faint dotted line for sharps/flats
+          ctx.lineWidth = 0.5;
+          ctx.strokeStyle = "rgba(255,255,255,0.04)";
+          ctx.setLineDash([2, 4]); 
+          ctx.stroke();
+          ctx.setLineDash([]); 
+        }
+      }
+
+      // --- 2. Draw Hit Line (Scanner) ---
+      ctx.save();
+      ctx.shadowColor = "rgba(0, 229, 255, 0.5)";
+      ctx.shadowBlur = 15;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(hitLineX, 0);
+      ctx.lineTo(hitLineX, height);
+      ctx.stroke();
+      ctx.restore();
+
+      // --- 3. Draw Target Notes (Colored Pills) ---
+      words.forEach((word) => {
+        if (typeof word.midi !== "number") return;
+        if (word.endTime < startTime || word.startTime > endTime) return;
+
+        const xStart = hitLineX + (word.startTime - now) * pixelsPerSecond;
+        const xEnd = hitLineX + (word.endTime - now) * pixelsPerSecond;
+        const barWidth = Math.max(10, xEnd - xStart);
+        const yCenter = midiToY(word.midi);
+        const barHeight = 10; 
+        const yTop = yCenter - barHeight / 2;
+
+        const wordKey = `${word.lineIndex}-${word.wordIndex}`;
+        const result = scoredResultsRef.current.get(wordKey);
+        
+        const isPast = word.endTime < now;
+        const isActive = now >= word.startTime && now <= word.endTime;
+
+        let fillStyle: string | CanvasGradient;
+        let glowColor = "rgba(0,0,0,0)";
+        
+        const createGrad = (c1: string, c2: string) => {
+            const g = ctx.createLinearGradient(0, yTop, 0, yTop + barHeight);
+            g.addColorStop(0, c1);
+            g.addColorStop(1, c2);
+            return g;
+        };
+
+        if (result) {
+            if (result === "PERFECT" || result === "GREAT") {
+                fillStyle = createGrad("rgba(255, 215, 0, 0.8)", "rgba(255, 160, 0, 0.8)");
+                glowColor = "rgba(255, 215, 0, 0.6)";
+            } else if (result === "GOOD") {
+                fillStyle = createGrad("rgba(100, 180, 255, 0.7)", "rgba(50, 130, 255, 0.7)");
+            } else { // MISS
+                fillStyle = "rgba(100, 100, 100, 0.3)";
+            }
+        } else {
+            if (isPast) {
+                 fillStyle = "rgba(100, 100, 100, 0.3)";
+            } else if (isActive) {
+                 fillStyle = createGrad("rgba(0, 255, 255, 0.9)", "rgba(0, 229, 255, 0.9)");
+                 glowColor = "rgba(0, 229, 255, 0.9)";
+            } else {
+                 fillStyle = "rgba(0, 200, 255, 0.6)";
+            }
+        }
+
+        ctx.save();
+        if (isActive || (result === "PERFECT")) {
+           ctx.shadowColor = glowColor;
+           ctx.shadowBlur = isActive ? 15 : 10;
+        }
+        
+        ctx.fillStyle = fillStyle;
+        drawPill(xStart, yTop, barWidth, barHeight);
+        ctx.fill();
+        
+        ctx.strokeStyle = isActive ? "rgba(255,255,255,1)" : "rgba(255,255,255,0.4)";
+        ctx.lineWidth = isActive ? 1.5 : 1;
+        ctx.stroke();
+        
+        ctx.restore();
+      });
+
+      // --- 4. Draw User Pitch Trail (Clean Step-Function) ---
+      const trail = userPitchTrailRef.current;
+      if (trail.length > 0) {
+        ctx.save();
+        ctx.strokeStyle = "#00E5FF"; // Bright Cyan
+        ctx.lineWidth = 3;
+        ctx.shadowColor = "rgba(0, 229, 255, 0.6)";
+        ctx.shadowBlur = 12;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        
+        let started = false;
+
+        for (let i = 0; i < trail.length; i++) {
+          const point = trail[i];
+          const x = hitLineX + (point.time - now) * pixelsPerSecond;
+          const y = midiToY(point.midi);
+
+          if (x < 0) continue; 
+
+          if (!started) {
+            ctx.moveTo(x, y);
+            started = true;
+          } else {
+            const prevPoint = trail[i - 1];
+            
+            // Check for break in trail
+            if (point.time - prevPoint.time > 0.3 || Math.abs(point.midi - prevPoint.midi) > 12) {
+               ctx.moveTo(x, y);
+            } else {
+               const prevY = midiToY(prevPoint.midi);
+               ctx.lineTo(x, prevY); // Horizontal hold
+               ctx.lineTo(x, y);     // Vertical jump
+            }
+          }
+        }
+        ctx.stroke();
+        
+        // Sparkle at head
+        if (trail.length > 0) {
+            const lastPoint = trail[trail.length - 1];
+            const headX = hitLineX + (lastPoint.time - now) * pixelsPerSecond;
+            const headY = midiToY(lastPoint.midi);
+            
+            ctx.fillStyle = "#FFF";
+            ctx.shadowColor = "rgba(255, 255, 255, 0.8)";
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(headX, headY, 4, 0, Math.PI * 2);
+            ctx.fill();
+            
+             if (Math.abs(headX - hitLineX) < 5) {
+                // Crossing the hit line
+                ctx.fillStyle = "#00E5FF";
+                ctx.beginPath();
+                ctx.arc(headX, headY, 6, 0, Math.PI * 2);
+                ctx.fill();
+             }
+        }
+
+        ctx.restore();
+      }
+
+      drawAnimationRef.current = requestAnimationFrame(draw);
+    };
+
+    drawAnimationRef.current = requestAnimationFrame(draw);
+    return () => {
+      if (drawAnimationRef.current) {
+        cancelAnimationFrame(drawAnimationRef.current);
+        drawAnimationRef.current = null;
+      }
+    };
+  }, [localTime, midiRange.max, midiRange.min, words]);
+
+  useEffect(() => {
+    if (!isMicOn) {
+      stopMicrophone();
+      return;
     }
-    setIsPlaying(!isPlaying);
-  };
+    if (!analyserRef.current) {
+      startMicrophone();
+    }
+  }, [isMicOn, startMicrophone, stopMicrophone]);
 
-  const currentLine = currentLyricIndex >= 0 ? lyrics[currentLyricIndex] : null;
-  const nextLine = useMemo(() => {
-     if (currentLyricIndex >= 0) return lyrics[currentLyricIndex + 1];
-     return lyrics.find(l => l.startTime > localTime);
-  }, [currentLyricIndex, lyrics, localTime]);
-
-  const progress = duration ? (localTime / duration) * 100 : 0;
-  const formatTime = (t: number) => `${Math.floor(t / 60)}:${Math.floor(t % 60).toString().padStart(2, '0')}`;
+  useEffect(() => {
+    return () => {
+      if (timeAnimationRef.current) cancelAnimationFrame(timeAnimationRef.current);
+      if (pitchAnimationRef.current) cancelAnimationFrame(pitchAnimationRef.current);
+      if (drawAnimationRef.current) cancelAnimationFrame(drawAnimationRef.current);
+      if (mediaStreamRef.current) mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      if (audioContextRef.current) audioContextRef.current.close();
+    };
+  }, []);
 
   if (!currentSong) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-white">
-         <AlertCircle className="w-16 h-16 text-gray-500 mb-4" />
-         <p className="text-gray-400">노래 정보를 불러오는 중...</p>
+      <div className="flex flex-col items-center justify-center h-full">
+        <AlertCircle className="w-16 h-16 text-gray-500 mb-4" />
+        <p className="text-gray-400">노래 정보를 불러오는 중...</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col w-full h-full bg-[#0a0e27] text-white overflow-hidden select-none font-sans">
+    <div className="flex flex-col w-full h-full bg-gradient-to-b from-[#0a0e27] via-[#0d1117] to-black text-white overflow-hidden">
       {audioUrl && (
         <audio
           ref={audioRef}
@@ -643,219 +712,241 @@ export default function PerfectScoreGame() {
         />
       )}
 
-      <div className="shrink-0 px-4 pt-4 pb-2 z-20 flex flex-col gap-2 bg-gradient-to-b from-black/80 to-transparent">
-        <div className="flex items-start justify-between gap-4">
-           <div className="flex flex-col items-start">
-              <p className="text-sm text-[#00E5FF] font-black italic tracking-wider drop-shadow-[0_0_8px_rgba(0,229,255,0.8)]">
-                PERFECT SCORE
-              </p>
-              <div className="text-4xl sm:text-5xl font-black text-white tracking-tight leading-none" 
-                   style={{ textShadow: "0 0 20px rgba(0,229,255,0.5)" }}>
-                {score.toLocaleString()}
-              </div>
-           </div>
+      <div className="shrink-0 px-4 pt-4 pb-2 z-20">
+        <div className="flex items-start justify-between gap-4 select-none">
+          {/* Left: Score */}
+          <div className="flex flex-col items-start">
+            <p className="text-sm text-[#00E5FF] tracking-wider font-extrabold italic drop-shadow-[0_0_8px_rgba(0,229,255,0.6)]">
+              PERFECT SCORE
+            </p>
+            <div className="relative mt-[-4px]">
+               <div className="text-4xl sm:text-5xl font-black text-white tabular-nums tracking-tight"
+                    style={{ textShadow: "0 0 15px rgba(0, 229, 255, 0.4)" }}>
+                 {score.toLocaleString()}
+               </div>
+            </div>
+          </div>
 
-           <div className="hidden sm:flex flex-col items-center text-center pt-1">
-              <h1 className="text-lg font-bold text-white/90 truncate max-w-[300px]">{currentSong.title}</h1>
+          {/* Center: Song Info (Compact) */}
+           <div className="flex flex-col items-center text-center pt-1 hidden sm:flex">
+              <h1 className="text-lg font-bold truncate max-w-[300px] text-white/90">{currentSong.title}</h1>
               <p className="text-xs text-white/50">{currentSong.artist}</p>
            </div>
 
-           <div className="flex flex-col items-end">
-              <div className="text-4xl sm:text-5xl font-black text-[#FFD700] tracking-tighter leading-none"
-                   style={{ textShadow: "0 0 20px rgba(255,215,0,0.5)" }}>
-                {combo}
-              </div>
-              <p className="text-sm text-[#FFD700] font-bold tracking-widest uppercase">COMBO</p>
-           </div>
+          {/* Right: Combo */}
+          <div className="flex flex-col items-end">
+            <div className="text-4xl sm:text-5xl font-black text-[#FFD700] tabular-nums tracking-tighter"
+                 style={{ textShadow: "0 0 15px rgba(255, 215, 0, 0.4)" }}>
+              {combo}
+            </div>
+            <div className="text-sm text-[#FFD700] font-bold tracking-widest mt-[-4px]">
+              COMBO
+            </div>
+          </div>
         </div>
 
-        <div 
-            className="h-2 w-full bg-white/10 rounded-full overflow-hidden cursor-pointer relative group mt-2"
-            onClick={handleSeek}
-        >
-            <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-[#FFD700] via-[#A855F7] to-[#00E5FF] origin-left"
-                 style={{ transform: `scaleX(${progress / 100})` }} />
-            <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="mt-4 h-2 w-full bg-white/10 rounded-full overflow-hidden cursor-pointer relative group" onClick={handleSeek}>
+          <motion.div
+            className="h-full bg-gradient-to-r from-[#FFD700] via-[#A855F7] to-[#38BDF8]"
+            style={{ width: `${progress}%` }}
+          />
+          <div className="absolute top-0 bottom-0 w-full opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="h-full bg-white/10 w-full" />
+          </div>
         </div>
       </div>
 
-      <div ref={containerRef} className="flex-1 relative min-h-0 w-full z-10">
-         <canvas ref={canvasRef} className="block w-full h-full" />
-         
-         <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden">
-            <AnimatePresence>
-                {scorePopups.map(popup => (
-                    <motion.div
-                        key={popup.id}
-                        initial={{ opacity: 0, y: 20, scale: 0.5 }}
-                        animate={{ opacity: 1, y: -80, scale: 1.2 }}
-                        exit={{ opacity: 0, scale: 1.5 }}
-                        transition={{ duration: 0.8, ease: "easeOut" }}
-                        className={`absolute text-4xl font-black italic drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)] ${
-                            popup.type === "PERFECT" ? "text-[#FFD700]" :
-                            popup.type === "GREAT" ? "text-[#4ade80]" :
-                            popup.type === "GOOD" ? "text-[#60a5fa]" : "text-gray-400"
-                        }`}
-                        style={{
-                            textShadow: popup.type === "PERFECT" ? "0 0 20px #FFD700" : "none"
+      <div className="flex-1 min-h-0 relative w-full z-10 my-2 px-2 sm:px-6">
+        <div className="relative w-full h-full">
+          <canvas ref={canvasRef} className="w-full h-full rounded-2xl border border-white/10 bg-black/40" />
+        </div>
+        
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden">
+          <AnimatePresence>
+            {scorePopups.map(popup => (
+              <motion.div
+                key={popup.id}
+                initial={{ opacity: 1, y: 0, scale: 1 }}
+                animate={{ opacity: 0, y: -60, scale: 1.4 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.8 }}
+                className={`text-4xl font-black drop-shadow-[0_6px_20px_rgba(0,0,0,0.6)] ${
+                  popup.type === "PERFECT"
+                    ? "text-[#FFD700]"
+                    : popup.type === "GREAT"
+                    ? "text-green-400"
+                    : popup.type === "GOOD"
+                    ? "text-blue-400"
+                    : "text-red-400"
+                }`}
+              >
+                {popup.type}
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      <div className="shrink-0 px-4 py-2 z-20 min-h-[100px] flex flex-col justify-center">
+        <div className="flex flex-col gap-2 items-center text-center">
+          {/* Current Line - Karaoke Style */}
+          <div className="flex flex-wrap justify-center gap-x-[0.3em] text-2xl sm:text-3xl md:text-4xl font-black">
+            {currentLine ? (
+              currentLine.words && currentLine.words.length > 0 ? (
+                currentLine.words.map((word, idx) => {
+                  const duration = word.endTime - word.startTime;
+                  const progress = duration > 0 
+                    ? Math.max(0, Math.min(1, (localTime - word.startTime) / duration))
+                    : (localTime >= word.endTime ? 1 : 0);
+                  
+                  return (
+                    <span key={idx} className="relative inline-block">
+                      {/* Dim Background Layer */}
+                      <span 
+                        className="text-white/30"
+                        style={{ 
+                          WebkitTextStroke: "2px rgba(0,0,0,0.8)", 
+                          paintOrder: "stroke fill" 
                         }}
-                    >
-                        {popup.type}
-                    </motion.div>
-                ))}
-            </AnimatePresence>
-         </div>
+                      >
+                        {word.text}
+                      </span>
+                      
+                      {/* Bright Foreground Layer (Clipped) */}
+                      <span 
+                        className="absolute left-0 top-0 text-[#00E5FF] overflow-hidden whitespace-nowrap"
+                        style={{ 
+                          width: `${progress * 100}%`,
+                          WebkitTextStroke: "2px rgba(0,0,0,0.9)", 
+                          paintOrder: "stroke fill",
+                          textShadow: "0 0 12px rgba(0, 229, 255, 0.6)"
+                        }}
+                      >
+                        {word.text}
+                      </span>
+                    </span>
+                  );
+                })
+              ) : (
+                // Fallback if no word timings
+                <span className="text-white" style={{ WebkitTextStroke: "2px rgba(0,0,0,0.9)" }}>
+                  {currentLine.text}
+                </span>
+              )
+            ) : (
+              <span>&nbsp;</span>
+            )}
+          </div>
+
+          {/* Next Line - Dim */}
+          <div 
+            className="text-lg sm:text-2xl font-bold text-white/50 mt-1" 
+            style={{ WebkitTextStroke: "1px rgba(0,0,0,0.8)", paintOrder: "stroke fill" }}
+          >
+            {nextLine?.text || "\u00A0"}
+          </div>
+        </div>
       </div>
 
-      <div className="shrink-0 px-4 py-4 min-h-[140px] flex flex-col justify-center items-center bg-gradient-to-t from-black via-[#0d1117] to-transparent z-20">
-         <div className="flex flex-col gap-2 items-center text-center w-full max-w-5xl">
-            <div className="flex flex-wrap justify-center gap-x-[0.3em] text-2xl sm:text-3xl md:text-4xl font-black leading-tight">
-               {currentLine ? (
-                  currentLine.words && currentLine.words.length > 0 ? (
-                      currentLine.words.map((word, idx) => {
-                          const wDur = word.endTime - word.startTime;
-                          const wProg = wDur > 0 
-                             ? Math.max(0, Math.min(1, (localTime - word.startTime) / wDur))
-                             : (localTime >= word.endTime ? 1 : 0);
-                          
-                          return (
-                              <span key={idx} className="relative inline-block">
-                                  <span className="text-white/20" style={{ WebkitTextStroke: "1px black" }}>
-                                    {word.text}
-                                  </span>
-                                  <span className="absolute left-0 top-0 text-[#00E5FF] overflow-hidden whitespace-nowrap"
-                                        style={{ 
-                                            width: `${wProg * 100}%`,
-                                            textShadow: "0 0 15px rgba(0,229,255,0.8)",
-                                            filter: "drop-shadow(0 0 2px rgba(0,0,0,0.5))"
-                                        }}>
-                                     {word.text}
-                                  </span>
-                              </span>
-                          );
-                      })
-                  ) : (
-                      <span className="text-[#00E5FF]">{currentLine.text}</span>
-                  )
-               ) : (
-                   <span className="text-white/20">...</span>
-               )}
-            </div>
+      <div className="shrink-0 px-4 py-3 sm:px-6 sm:py-4 bg-gradient-to-t from-black via-black/80 to-transparent z-30">
+        <div className="max-w-5xl mx-auto">
+          <div className="flex justify-between text-xs text-white/60 font-mono mb-2 px-1">
+            <span>{formatTime(localTime)}</span>
+            <span>{formatTime(duration)}</span>
+          </div>
 
-            <div className="text-lg sm:text-xl font-medium text-white/40 mt-1 h-[1.5em] overflow-hidden">
-                {nextLine?.text || ""}
-            </div>
-         </div>
-      </div>
-
-      <div className="shrink-0 bg-black/80 backdrop-blur-md border-t border-white/10 px-4 py-3 sm:px-6">
-         <div className="max-w-5xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-4">
-                <div className="text-xs font-mono text-gray-400 w-24">
-                   {formatTime(localTime)} / {formatTime(duration)}
-                </div>
-                
-                <div className="hidden sm:flex items-center gap-2 group">
-                   <button onClick={() => setVolume(v => v === 0 ? 1 : 0)} className="text-gray-400 hover:text-white">
-                      <Volume2 className="w-5 h-5" />
-                   </button>
-                   <input 
-                      type="range" min="0" max="1" step="0.05" 
-                      value={volume} onChange={e => setVolume(parseFloat(e.target.value))}
-                      className="w-20 accent-[#00E5FF] h-1" 
-                   />
-                </div>
-                
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 <button 
-                   onClick={toggleMic}
-                   className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${
-                       isMicOn 
-                       ? "bg-[#FFD700]/20 border-[#FFD700] text-[#FFD700]" 
-                       : "bg-white/5 border-white/10 text-gray-400"
-                   }`}
+                  onClick={() => setVolume(v => v === 0 ? 1 : 0)}
+                  className="p-1 hover:text-white text-white/60 transition-colors"
                 >
-                   {isMicOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-                   <span className="text-xs font-bold hidden sm:inline">MIC</span>
+                  <Volume2 className="w-5 h-5" />
                 </button>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={volume}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    setVolume(v);
+                    if (audioRef.current) audioRef.current.volume = v;
+                  }}
+                  className="w-20 sm:w-24 accent-[#FFD700] hidden sm:block"
+                />
+              </div>
+
+              <button
+                onClick={() => setIsMicOn(!isMicOn)}
+                className={`p-2 rounded-full transition-all ${
+                  isMicOn ? "bg-[#FFD700]/20 text-[#FFD700]" : "bg-white/10 text-white/60"
+                }`}
+              >
+                {isMicOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+              </button>
             </div>
 
-            <div className="flex items-center gap-6">
-               <button onClick={handleRestart} className="p-2 text-gray-400 hover:text-white transition-transform hover:-rotate-90">
-                  <RotateCcw className="w-5 h-5" />
-               </button>
-               
-               <button 
-                  onClick={togglePlay}
-                  disabled={!audioLoaded}
-                  className="w-12 h-12 rounded-full bg-[#FFD700] text-black flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-[0_0_20px_rgba(255,215,0,0.4)] disabled:opacity-50 disabled:shadow-none"
-               >
-                  {isPlaying ? <Pause className="w-6 h-6 fill-black" /> : <Play className="w-6 h-6 fill-black ml-1" />}
-               </button>
-
-               <button 
-                  onClick={() => window.dispatchEvent(new Event("kero:skipForward"))}
-                  className="p-2 text-gray-400 hover:text-white transition-transform hover:translate-x-1"
-               >
-                  <SkipForward className="w-5 h-5" />
-               </button>
+            <div className="flex items-center gap-4 sm:gap-6">
+              <button
+                onClick={handleRestart}
+                className="p-2 text-white/70 hover:text-white transition-colors"
+              >
+                <RotateCcw className="w-5 h-5" />
+              </button>
+              <button
+                onClick={togglePlay}
+                disabled={!audioLoaded}
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#FFD700] text-black flex items-center justify-center shadow-xl disabled:opacity-50 hover:scale-105 transition-transform"
+              >
+                {isPlaying ? <Pause className="w-5 h-5 sm:w-6 sm:h-6" /> : <Play className="w-5 h-5 sm:w-6 sm:h-6 ml-1" />}
+              </button>
+              <button
+                onClick={() => window.dispatchEvent(new Event("kero:skipForward"))}
+                className="p-2 text-white/70 hover:text-white transition-colors"
+              >
+                <SkipForward className="w-5 h-5" />
+              </button>
             </div>
 
-            <div className="flex items-center justify-end w-24">
-               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 text-xs text-gray-300">
-                  <Music className="w-3 h-3" />
-                  <span>{songQueue.length}</span>
-               </div>
+            <div className="text-xs text-white/50 font-mono hidden sm:block w-20 text-right">
+              {songQueue.length}곡 대기
             </div>
-         </div>
+             <div className="w-8 sm:hidden"></div>
+          </div>
+        </div>
       </div>
 
       <AnimatePresence>
         {status === "finished" && score > 0 && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
+            className="absolute inset-0 z-50 flex items-center justify-center bg-black/80"
           >
-            <motion.div 
-               initial={{ scale: 0.9, y: 20 }}
-               animate={{ scale: 1, y: 0 }}
-               className="bg-[#1a1f35] border border-white/10 rounded-3xl p-10 text-center shadow-2xl relative overflow-hidden max-w-sm w-full mx-4"
-            >
-               <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[#00E5FF] via-[#FFD700] to-[#A855F7]" />
-               
-               <p className="text-white/60 tracking-[0.2em] text-sm font-bold uppercase mb-6">Final Result</p>
-               
-               <div className="mb-8">
-                  <span className="text-6xl font-black text-[#FFD700] drop-shadow-[0_0_15px_rgba(255,215,0,0.4)]">
-                     {score.toLocaleString()}
-                  </span>
-               </div>
-               
-               <div className="flex justify-center gap-8 mb-8">
-                  <div className="flex flex-col">
-                     <span className="text-2xl font-bold text-white">{combo}</span>
-                     <span className="text-xs text-white/40 uppercase tracking-wider">Max Combo</span>
-                  </div>
-                  <div className="w-px bg-white/10" />
-                  <div className="flex flex-col">
-                     <span className="text-2xl font-bold text-white">
-                        {Math.round((score / (flatWords.length * 100)) * 100) || 0}%
-                     </span>
-                     <span className="text-xs text-white/40 uppercase tracking-wider">Accuracy</span>
-                  </div>
-               </div>
-               
-               <button 
+            <div className="bg-[#1a1f35] border border-white/10 rounded-3xl px-10 py-8 text-center shadow-2xl">
+              <p className="text-white/60 tracking-widest text-sm uppercase">Final Score</p>
+              <p className="text-5xl sm:text-6xl font-black text-[#FFD700] mt-4 tabular-nums">{score.toLocaleString()}</p>
+              <p className="text-[#A855F7] font-bold mt-4 text-xl">Max Combo {combo}</p>
+              <button 
                  onClick={() => window.dispatchEvent(new Event("kero:skipForward"))}
-                 className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold transition-all hover:scale-[1.02] active:scale-[0.98]"
-               >
-                 Next Song
-               </button>
-            </motion.div>
+                 className="mt-8 px-6 py-2 bg-white/10 hover:bg-white/20 rounded-full text-white/80 transition-colors"
+              >
+                Next Song
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
   );
 }
+
+const formatTime = (time: number) => {
+  const mins = Math.floor(time / 60);
+  const secs = Math.floor(time % 60);
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+};
