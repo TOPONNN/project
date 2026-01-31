@@ -188,6 +188,13 @@ export function initializeSocket(httpServer: HttpServer): Server {
       socket.to(roomCode).emit("queue:song-updated", { songId: data.songId, updates: data.updates });
     });
 
+    // Quiz broadcast — host sends generated questions to all other players
+    socket.on("quiz:broadcast-questions", (data: { roomCode: string; questions: any[] }) => {
+      const roomCode = data.roomCode || socket.data.roomCode;
+      if (!roomCode) return;
+      socket.to(roomCode).emit("quiz:questions-data", data.questions);
+    });
+
     normalModeHandler.registerEvents(socket);
     perfectScoreHandler.registerEvents(socket);
     lyricsQuizHandler.registerEvents(socket);

@@ -380,7 +380,7 @@ export default function RoomPage() {
            .map(s => s.songId as string);
          const allSongIds = [queueItem.songId, ...readySongIds.filter(id => id !== queueItem.songId)];
          
-         const quizRes = await fetch(`/api/songs/quiz/generate?songIds=${allSongIds.join(",")}&count=10`);
+          const quizRes = await fetch(`/api/songs/quiz/generate?songIds=${allSongIds.join(",")}&count=30`);
          const quizData = await quizRes.json();
          if (quizData.success && quizData.data.questions) {
            dispatch(setQuizQuestions(quizData.data.questions.map((q: any, idx: number) => {
@@ -466,7 +466,7 @@ export default function RoomPage() {
     const startQuiz = async () => {
       setIsQuizLoading(true);
       try {
-        const res = await fetch(`/api/songs/quiz/generate?count=10`);
+         const res = await fetch(`/api/songs/quiz/generate?count=30`);
         const data = await res.json();
         
         if (!data.success || !data.data?.questions) {
