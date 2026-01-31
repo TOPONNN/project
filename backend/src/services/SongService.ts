@@ -462,7 +462,7 @@ export class SongService {
             questionText: `이 노래의 제목은? (가수: ${cleanTitle(song.artist)})`,
             correctAnswer: cleanTitle(song.title),
             wrongAnswers: otherTitles,
-            timeLimit: 20,
+            timeLimit: 60,
             points: 1000,
             metadata: { source: "tj", tjNumber: song.number },
           });
@@ -479,7 +479,7 @@ export class SongService {
             questionText: `'${cleanTitle(song.title)}'을(를) 부른 가수는?`,
             correctAnswer: cleanTitle(song.artist),
             wrongAnswers: otherArtists,
-            timeLimit: 15,
+            timeLimit: 60,
             points: 1000,
             metadata: { source: "tj", tjNumber: song.number },
           });
@@ -497,7 +497,7 @@ export class SongService {
             questionText: initials,
             correctAnswer: cleaned,
             wrongAnswers: [],
-            timeLimit: 20,
+            timeLimit: 90,
             points: 1000,
             metadata: { source: "tj", tjNumber: song.number, hint: `${cleanTitle(song.artist)}의 노래, ${cleaned.length}글자` },
           });
