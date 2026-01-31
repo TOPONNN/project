@@ -363,26 +363,7 @@ export class SongService {
       console.error("Failed to fetch TJ chart:", e);
     }
 
-    // 2. Get DB processed songs
-    const dbSongs = await this.getSongPool();
-    const dbSongIds = dbSongs.map(s => s.id);
-
-     // 3. Generate DB-based questions (lyrics-dependent types)
-     let dbQuestions: any[] = [];
-     if (dbSongIds.length > 0) {
-       const rawQuestions = await this.generateMixedQuiz(dbSongIds, Math.min(count, 15));
-      dbQuestions = rawQuestions.map(q => ({
-        type: q.type,
-        questionText: q.questionText,
-        correctAnswer: q.correctAnswer,
-        wrongAnswers: q.wrongAnswers,
-        timeLimit: q.timeLimit,
-        points: q.points,
-        metadata: q.metadata,
-      }));
-    }
-
-     // 4. Generate TJ-based questions (no lyrics needed)
+     // 2. Generate TJ-based questions (no lyrics needed)
      const tjQuestions: any[] = [];
      const shuffle = <T>(arr: T[]): T[] => {
        const a = [...arr];
@@ -400,8 +381,8 @@ export class SongService {
     if (tjSongs.length >= 4) {
       const shuffledTJ = shuffle(tjSongs);
 
-        // TITLE_GUESS from TJ (up to 8)
-        for (let i = 0; i < Math.min(8, shuffledTJ.length); i++) {
+        // TITLE_GUESS from TJ (up to 12)
+        for (let i = 0; i < Math.min(12, shuffledTJ.length); i++) {
          const song = shuffledTJ[i];
          const otherTitles = shuffle(
            tjSongs.filter(s => s.title !== song.title).map(s => cleanTitle(s.title))
@@ -409,34 +390,34 @@ export class SongService {
          if (otherTitles.length < 3) continue;
          tjQuestions.push({
            type: "title_guess",
-           questionText: `이 노래의 제목은? (가수: ${song.artist})`,
+           questionText: `이 노래의 제목은? (가수: ${cleanTitle(song.artist)})`,
            correctAnswer: cleanTitle(song.title),
            wrongAnswers: otherTitles,
-           timeLimit: 20,
+           timeLimit: 30,
            points: 1000,
            metadata: { source: "tj", tjNumber: song.number },
          });
        }
 
-        // ARTIST_GUESS from TJ (up to 8)
-        for (let i = 8; i < Math.min(16, shuffledTJ.length); i++) {
+        // ARTIST_GUESS from TJ (up to 12)
+        for (let i = 12; i < Math.min(24, shuffledTJ.length); i++) {
          const song = shuffledTJ[i];
-         const uniqueArtists = [...new Set(tjSongs.filter(s => s.artist !== song.artist).map(s => s.artist))];
+         const uniqueArtists = [...new Set(tjSongs.filter(s => s.artist !== song.artist).map(s => cleanTitle(s.artist)))];
          const otherArtists = shuffle(uniqueArtists).slice(0, 3);
          if (otherArtists.length < 3) continue;
          tjQuestions.push({
            type: "artist_guess",
            questionText: `'${cleanTitle(song.title)}'을(를) 부른 가수는?`,
-           correctAnswer: song.artist,
+           correctAnswer: cleanTitle(song.artist),
            wrongAnswers: otherArtists,
-           timeLimit: 15,
+           timeLimit: 25,
            points: 1000,
            metadata: { source: "tj", tjNumber: song.number },
          });
        }
 
-        // INITIAL_GUESS from TJ (up to 5)
-        for (let i = 16; i < Math.min(21, shuffledTJ.length); i++) {
+        // INITIAL_GUESS from TJ (up to 8)
+        for (let i = 24; i < Math.min(32, shuffledTJ.length); i++) {
          const song = shuffledTJ[i];
          const cleaned = cleanTitle(song.title);
          const initials = getKoreanInitials(cleaned);
@@ -446,9 +427,9 @@ export class SongService {
            questionText: initials,
            correctAnswer: cleaned,
            wrongAnswers: [],
-           timeLimit: 20,
+           timeLimit: 30,
            points: 1000,
-           metadata: { source: "tj", tjNumber: song.number, hint: `${song.artist}의 노래, ${cleaned.length}글자` },
+           metadata: { source: "tj", tjNumber: song.number, hint: `${cleanTitle(song.artist)}의 노래, ${cleaned.length}글자` },
          });
         }
      }
@@ -485,8 +466,8 @@ export class SongService {
         }
       }
 
-     // 5. Mix DB + TJ questions and return
-    const allQuestions = shuffle([...dbQuestions, ...tjQuestions]);
+     // 3. Shuffle and return
+    const allQuestions = shuffle([...tjQuestions]);
     return allQuestions.slice(0, count);
   }
 
