@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, Users, Check, X, AlertCircle, Send } from "lucide-react";
@@ -64,6 +64,8 @@ export default function LyricsQuizGame() {
   const [showResults, setShowResults] = useState(false);
   const [localScore, setLocalScore] = useState(0);
   const [submitted, setSubmitted] = useState(false);
+  const hasProcessedRevealRef = useRef(false);
+  const streakRef = useRef(streak);
   
   const [ordering, setOrdering] = useState<number[]>([]);
   const [textAnswer, setTextAnswer] = useState("");
@@ -113,14 +115,19 @@ export default function LyricsQuizGame() {
   }, [currentQuestion, isAnswerRevealed, submitted, handleTimeUp]);
 
   useEffect(() => {
-    if (isAnswerRevealed) {
+    streakRef.current = streak;
+  }, [streak]);
+
+  useEffect(() => {
+    if (isAnswerRevealed && !hasProcessedRevealRef.current) {
+      hasProcessedRevealRef.current = true;
       setShowResults(true);
       
       const myResult = roundResults.find(r => r.odId === "local" || r.odName === "나");
       if (myResult) {
         if (myResult.isCorrect) {
           setLocalScore(prev => prev + myResult.points);
-          dispatch(updateStreak(streak + 1));
+          dispatch(updateStreak(streakRef.current + 1));
         } else {
           dispatch(updateStreak(0));
         }
@@ -136,7 +143,11 @@ export default function LyricsQuizGame() {
       }, 5000);
       return () => clearTimeout(timeout);
     }
-  }, [isAnswerRevealed, currentQuestionIndex, quizQuestions.length, dispatch, roundResults, streak]);
+
+    if (!isAnswerRevealed) {
+      hasProcessedRevealRef.current = false;
+    }
+  }, [isAnswerRevealed, currentQuestionIndex, quizQuestions.length, dispatch, roundResults]);
 
    const handleSelectAnswer = (index: number) => {
      if (submitted || isAnswerRevealed) return;
