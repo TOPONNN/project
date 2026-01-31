@@ -5,7 +5,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, Users, Check, X, AlertCircle, Send, RotateCcw, ArrowLeft } from "lucide-react";
 import type { RootState } from "@/store";
-import { selectAnswer, nextQuestion, revealAnswer, setGameStatus, updateStreak, setQuizQuestions, resetQuiz } from "@/store/slices/gameSlice";
+import { selectAnswer, nextQuestion, revealAnswer, setGameStatus, updateStreak, resetQuiz } from "@/store/slices/gameSlice";
 import { useSocket } from "@/hooks/useSocket";
 
 const KAHOOT_COLORS = [
@@ -73,17 +73,23 @@ export default function LyricsQuizGame() {
 
   const currentQuestion = quizQuestions[currentQuestionIndex];
 
-  useEffect(() => {
-    if (currentQuestion) {
-      setTimeLeft(currentQuestion.timeLimit || 20);
-      setOrdering([]);
-      setTextAnswer("");
-      setSubmitted(false);
-      setShowResults(false);
-    }
-  }, [currentQuestionIndex, currentQuestion]);
+   useEffect(() => {
+     if (currentQuestion) {
+       setTimeLeft(currentQuestion.timeLimit || 20);
+       setOrdering([]);
+       setTextAnswer("");
+       setSubmitted(false);
+       setShowResults(false);
+     }
+   }, [currentQuestionIndex, currentQuestion]);
 
-   const handleTimeUp = useCallback(() => {
+   useEffect(() => {
+     if (quizQuestions.length > 0 && isRestarting) {
+       setIsRestarting(false);
+     }
+   }, [quizQuestions, isRestarting]);
+
+    const handleTimeUp = useCallback(() => {
      if (!submitted && !isAnswerRevealed) {
        setSubmitted(true);
        
@@ -248,54 +254,28 @@ export default function LyricsQuizGame() {
      }
    };
 
-   const restartQuiz = async () => {
-     setIsRestarting(true);
-     try {
-       const quizRes = await fetch(`/api/songs/quiz/generate?count=10`);
-       const quizData = await quizRes.json();
-       if (!quizData.success || !quizData.data.questions || quizData.data.questions.length === 0) {
-         alert("퀴즈를 생성할 수 없습니다. 처리된 곡이 없습니다.");
-         return;
-       }
-       // Reset local state
-       setLocalScore(0);
-       setSubmitted(false);
-       setShowResults(false);
-       setTimeLeft(20);
-       setOrdering([]);
-       setTextAnswer("");
-       streakRef.current = 0;
-       hasProcessedRevealRef.current = false;
-       
-       // Reset Redux state and set new questions
-       dispatch(resetQuiz());
-       dispatch(updateStreak(0));
-       dispatch(setQuizQuestions(quizData.data.questions.map((q: any, idx: number) => {
-         const options = q.wrongAnswers && q.wrongAnswers.length > 0
-           ? [q.correctAnswer, ...q.wrongAnswers].sort(() => Math.random() - 0.5)
-           : undefined;
-         const correctIndex = options ? options.indexOf(q.correctAnswer) : undefined;
-         return {
-           id: q.id || String(idx),
-           type: q.type || "lyrics_fill",
-           questionText: q.questionText,
-           options,
-           correctIndex,
-           correctAnswer: q.correctAnswer,
-           timeLimit: q.timeLimit || 10,
-           metadata: q.metadata,
-           lines: q.type === "lyrics_order" && q.wrongAnswers
-             ? q.wrongAnswers.map((text: string, i: number) => ({ idx: i, text })).sort(() => Math.random() - 0.5)
-             : undefined,
-         };
-       })));
-     } catch (e) {
-       console.error("Error restarting quiz:", e);
-       alert("퀴즈 재시작에 실패했습니다.");
-     } finally {
-       setIsRestarting(false);
-     }
-   };
+    const restartQuiz = () => {
+      setIsRestarting(true);
+      
+      // Reset local state
+      setLocalScore(0);
+      setSubmitted(false);
+      setShowResults(false);
+      setTimeLeft(20);
+      setOrdering([]);
+      setTextAnswer("");
+      streakRef.current = 0;
+      hasProcessedRevealRef.current = false;
+      
+      // Reset Redux quiz state
+      dispatch(resetQuiz());
+      dispatch(updateStreak(0));
+      
+      // Emit socket event — server will generate new questions and broadcast to all clients
+      emitEvent("quiz:start", { roomCode: code });
+      // The useSocket hook will receive quiz:questions-data and dispatch setQuizQuestions
+      // isRestarting will be cleared by the useEffect below
+    };
 
    const goToWaitingRoom = () => {
      dispatch(setGameStatus("waiting"));

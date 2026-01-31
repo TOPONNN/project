@@ -101,6 +101,11 @@ export function useSocket(roomCode: string | null) {
       dispatch(revealAnswer(results));
     });
 
+    socket.on("quiz:questions-data", (questions: any[]) => {
+      dispatch(setQuizQuestions(questions));
+      dispatch(setGameStatus("playing"));
+    });
+
     return () => {
       socket.emit("room:leave", { code: roomCode });
       disconnectSocket();

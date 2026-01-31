@@ -115,19 +115,13 @@ router.post("/:id/processing-callback", async (req: Request, res: Response) => {
 
 router.get("/quiz/generate", async (req: Request, res: Response) => {
   try {
-    let songIds = (req.query.songIds as string)?.split(",").filter(Boolean) || [];
     const count = parseInt(req.query.count as string) || 10;
+    const questions = await songService.generateTJEnhancedQuiz(count);
     
-    if (songIds.length === 0) {
-      const allSongs = await songService.getSongPool();
-      songIds = allSongs.map((song) => song.id);
-    }
-
-    if (songIds.length === 0) {
-      return res.status(400).json({ success: false, message: "퀴즈에 사용할 수 있는 곡이 없습니다." });
+    if (questions.length === 0) {
+      return res.status(400).json({ success: false, message: "퀴즈에 사용할 수 있는 데이터가 없습니다." });
     }
     
-    const questions = await songService.generateMixedQuiz(songIds, count);
     res.json({ success: true, data: { questions } });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });

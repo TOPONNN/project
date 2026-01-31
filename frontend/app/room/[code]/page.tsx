@@ -173,21 +173,28 @@ export default function RoomPage() {
     return () => window.removeEventListener("kero:skipForward", handleSkipForward);
   }, []);
 
-  // Auto-play next song when current song finishes
-  useEffect(() => {
-    if (gameStatus === "finished") {
-      const nextReady = songQueue.find(s => s.status === "ready");
-      if (nextReady) {
-        const timer = setTimeout(() => {
-          playSong(nextReady);
-        }, 2000);
-        return () => clearTimeout(timer);
-      } else {
-        dispatch(setGameStatus("waiting"));
-        dispatch(setCurrentSong(null));
-      }
-    }
-  }, [gameStatus, songQueue]);
+   // Clear quiz loading state when game starts
+   useEffect(() => {
+     if (gameStatus === "playing") {
+       setIsQuizLoading(false);
+     }
+   }, [gameStatus]);
+
+   // Auto-play next song when current song finishes
+   useEffect(() => {
+     if (gameStatus === "finished") {
+       const nextReady = songQueue.find(s => s.status === "ready");
+       if (nextReady) {
+         const timer = setTimeout(() => {
+           playSong(nextReady);
+         }, 2000);
+         return () => clearTimeout(timer);
+       } else {
+         dispatch(setGameStatus("waiting"));
+         dispatch(setCurrentSong(null));
+       }
+     }
+   }, [gameStatus, songQueue]);
 
   const addSongToQueue = async (song: TJSong) => {
     const queueId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -449,42 +456,13 @@ export default function RoomPage() {
     setMediaStatus(prev => ({ ...prev, isMicOn: !prev.isMicOn }));
   };
 
-   const startQuiz = async () => {
-     setIsQuizLoading(true);
-     try {
-       const quizRes = await fetch(`/api/songs/quiz/generate?count=10`);
-       const quizData = await quizRes.json();
-       if (!quizData.success || !quizData.data.questions || quizData.data.questions.length === 0) {
-         alert("퀴즈를 생성할 수 없습니다. 처리된 곡이 없습니다.");
-         return;
-       }
-       dispatch(setQuizQuestions(quizData.data.questions.map((q: any, idx: number) => {
-         const options = q.wrongAnswers && q.wrongAnswers.length > 0
-           ? [q.correctAnswer, ...q.wrongAnswers].sort(() => Math.random() - 0.5)
-           : undefined;
-         const correctIndex = options ? options.indexOf(q.correctAnswer) : undefined;
-         return {
-           id: q.id || String(idx),
-           type: q.type || "lyrics_fill",
-           questionText: q.questionText,
-           options,
-           correctIndex,
-           correctAnswer: q.correctAnswer,
-           timeLimit: q.timeLimit || 10,
-           metadata: q.metadata,
-           lines: q.type === "lyrics_order" && q.wrongAnswers
-             ? q.wrongAnswers.map((text: string, i: number) => ({ idx: i, text })).sort(() => Math.random() - 0.5)
-             : undefined,
-         };
-       })));
-       dispatch(setGameStatus("playing"));
-     } catch (e) {
-       console.error("Error starting quiz:", e);
-       alert("퀴즈 시작에 실패했습니다.");
-     } finally {
-       setIsQuizLoading(false);
-     }
-   };
+    const startQuiz = () => {
+      setIsQuizLoading(true);
+      emitEvent("quiz:start", { roomCode: code });
+      // Server will emit quiz:questions-data to all clients
+      // The useSocket hook handles receiving questions and setting game status
+      // Loading state will be cleared when game status changes to "playing"
+    };
 
   if (gameStatus === "playing" && (currentSong || room?.gameMode === "lyrics_quiz")) {
     return (

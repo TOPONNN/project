@@ -4,6 +4,7 @@ import { uploadFile } from "../config/s3";
 import { publishMessage, QUEUES } from "../config/rabbitmq";
 import { v4 as uuidv4 } from "uuid";
 import { youtubeService } from "./YouTubeService";
+import { tjKaraokeService } from "./TJKaraokeService";
 
 const songRepository = AppDataSource.getRepository(Song);
 const lyricsRepository = AppDataSource.getRepository(LyricsLine);
@@ -118,7 +119,7 @@ export class SongService {
         wrongAnswers,
         startTime: targetLine.startTime,
         endTime: targetLine.endTime,
-        timeLimit: 10,
+        timeLimit: 15,
         points: 1000,
       }));
     }
@@ -135,7 +136,7 @@ export class SongService {
         wrongAnswers: lines.map((l: LyricsLine) => l.text),
         startTime: lines[0].startTime,
         endTime: lines[3].endTime,
-        timeLimit: 20,
+        timeLimit: 25,
         points: 1000,
         metadata: { lineTexts: lines.map((l: LyricsLine) => l.text) },
       }));
@@ -163,7 +164,7 @@ export class SongService {
           wrongAnswers: [],
           startTime: line.startTime,
           endTime: line.endTime,
-          timeLimit: 7,
+          timeLimit: 12,
           points: 1000,
         }));
       }
@@ -232,7 +233,7 @@ export class SongService {
         wrongAnswers: otherTitles,
         startTime: audioStart,
         endTime: audioStart + 10,
-        timeLimit: 15,
+        timeLimit: 20,
         points: 1000,
         metadata: { audioStartTime: audioStart, audioEndTime: audioStart + 10 },
       }));
@@ -252,7 +253,7 @@ export class SongService {
         wrongAnswers: otherArtists,
         startTime: 0,
         endTime: 0,
-        timeLimit: 10,
+        timeLimit: 15,
         points: 1000,
       }));
     }
@@ -269,7 +270,7 @@ export class SongService {
         wrongAnswers: [],
         startTime: 0,
         endTime: 0,
-        timeLimit: 15,
+        timeLimit: 20,
         points: 1000,
         metadata: { hint: `${song.title.length}글자` },
       }));
@@ -295,7 +296,7 @@ export class SongService {
         wrongAnswers: this.generateWrongAnswers(correct, lyrics),
         startTime: line.startTime,
         endTime: line.endTime,
-        timeLimit: 10,
+        timeLimit: 15,
         points: 1000,
       }));
     }
@@ -315,7 +316,7 @@ export class SongService {
           wrongAnswers: lines.map((l: LyricsLine) => l.text),
           startTime: lines[0].startTime,
           endTime: lines[3].endTime,
-          timeLimit: 20,
+          timeLimit: 25,
           points: 1000,
           metadata: { lineTexts: lines.map((l: LyricsLine) => l.text) },
         }));
@@ -339,13 +340,112 @@ export class SongService {
           wrongAnswers: [],
           startTime: line.startTime,
           endTime: line.endTime,
-          timeLimit: 7,
+          timeLimit: 12,
           points: 1000,
         }));
       }
     }
 
     return shuffle(questions).slice(0, count);
+  }
+
+  async generateTJEnhancedQuiz(count: number = 10): Promise<any[]> {
+    // 1. Get TJ chart songs for quiz material
+    let tjSongs: { number: string; title: string; artist: string }[] = [];
+    try {
+      tjSongs = await tjKaraokeService.searchPopular("monthly", "KOR", 100);
+    } catch (e) {
+      console.error("Failed to fetch TJ chart:", e);
+    }
+
+    // 2. Get DB processed songs
+    const dbSongs = await this.getSongPool();
+    const dbSongIds = dbSongs.map(s => s.id);
+
+    // 3. Generate DB-based questions (lyrics-dependent types)
+    let dbQuestions: any[] = [];
+    if (dbSongIds.length > 0) {
+      const rawQuestions = await this.generateMixedQuiz(dbSongIds, Math.min(count, 5));
+      dbQuestions = rawQuestions.map(q => ({
+        type: q.type,
+        questionText: q.questionText,
+        correctAnswer: q.correctAnswer,
+        wrongAnswers: q.wrongAnswers,
+        timeLimit: q.timeLimit,
+        points: q.points,
+        metadata: q.metadata,
+      }));
+    }
+
+    // 4. Generate TJ-based questions (no lyrics needed)
+    const tjQuestions: any[] = [];
+    const shuffle = <T>(arr: T[]): T[] => {
+      const a = [...arr];
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    };
+
+    if (tjSongs.length >= 4) {
+      const shuffledTJ = shuffle(tjSongs);
+
+      // TITLE_GUESS from TJ (up to 3)
+      for (let i = 0; i < Math.min(3, shuffledTJ.length); i++) {
+        const song = shuffledTJ[i];
+        const otherTitles = shuffle(
+          tjSongs.filter(s => s.title !== song.title).map(s => s.title)
+        ).slice(0, 3);
+        if (otherTitles.length < 3) continue;
+        tjQuestions.push({
+          type: "title_guess",
+          questionText: `이 노래의 제목은? (가수: ${song.artist})`,
+          correctAnswer: song.title,
+          wrongAnswers: otherTitles,
+          timeLimit: 20,
+          points: 1000,
+          metadata: { source: "tj", tjNumber: song.number },
+        });
+      }
+
+      // ARTIST_GUESS from TJ (up to 3)
+      for (let i = 3; i < Math.min(6, shuffledTJ.length); i++) {
+        const song = shuffledTJ[i];
+        const uniqueArtists = [...new Set(tjSongs.filter(s => s.artist !== song.artist).map(s => s.artist))];
+        const otherArtists = shuffle(uniqueArtists).slice(0, 3);
+        if (otherArtists.length < 3) continue;
+        tjQuestions.push({
+          type: "artist_guess",
+          questionText: `'${song.title}'을(를) 부른 가수는?`,
+          correctAnswer: song.artist,
+          wrongAnswers: otherArtists,
+          timeLimit: 15,
+          points: 1000,
+          metadata: { source: "tj", tjNumber: song.number },
+        });
+      }
+
+      // INITIAL_GUESS from TJ (up to 2)
+      for (let i = 6; i < Math.min(8, shuffledTJ.length); i++) {
+        const song = shuffledTJ[i];
+        const initials = getKoreanInitials(song.title);
+        if (initials === song.title) continue;
+        tjQuestions.push({
+          type: "initial_guess",
+          questionText: initials,
+          correctAnswer: song.title,
+          wrongAnswers: [],
+          timeLimit: 20,
+          points: 1000,
+          metadata: { source: "tj", tjNumber: song.number, hint: `${song.artist}의 노래, ${song.title.length}글자` },
+        });
+      }
+    }
+
+    // 5. Mix DB + TJ questions and return
+    const allQuestions = shuffle([...dbQuestions, ...tjQuestions]);
+    return allQuestions.slice(0, count);
   }
 
   async getSongPool(): Promise<Song[]> {
