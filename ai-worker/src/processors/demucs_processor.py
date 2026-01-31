@@ -42,7 +42,7 @@ class DemucsProcessor:
         waveform = waveform.unsqueeze(0).to(self.device)
 
         with torch.no_grad():
-            sources = apply_model(self.model, waveform, device=self.device, overlap=0.25, segment=None)
+            sources = apply_model(self.model, waveform, device=self.device, overlap=0.25, segment=None, shifts=2)
 
         sources = sources.squeeze(0)
         source_names = self.model.sources

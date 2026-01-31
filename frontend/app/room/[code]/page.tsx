@@ -344,16 +344,17 @@ export default function RoomPage() {
           startTime: l.startTime ?? l.start_time,
           endTime: l.endTime ?? l.end_time,
           text: l.text,
-          words: l.words?.map((w: any) => ({
-            startTime: w.startTime ?? w.start_time,
-            endTime: w.endTime ?? w.end_time,
-            text: w.text,
-            energy: w.energy,
-            pitch: w.pitch,
-            note: w.note,
-            midi: w.midi,
-            voiced: w.voiced,
-          })),
+           words: l.words?.map((w: any) => ({
+             startTime: w.startTime ?? w.start_time,
+             endTime: w.endTime ?? w.end_time,
+             text: w.text,
+             energy: w.energy,
+             energyCurve: w.energyCurve ?? w.energy_curve,
+             pitch: w.pitch,
+             note: w.note,
+             midi: w.midi,
+             voiced: w.voiced,
+           })),
         })) || [],
       }));
       
