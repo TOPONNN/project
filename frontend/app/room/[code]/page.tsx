@@ -448,7 +448,41 @@ export default function RoomPage() {
     setMediaStatus(prev => ({ ...prev, isMicOn: !prev.isMicOn }));
   };
 
-  if (gameStatus === "playing" && currentSong) {
+  const startQuiz = async () => {
+    try {
+      const quizRes = await fetch(`/api/songs/quiz/generate?count=10`);
+      const quizData = await quizRes.json();
+      if (!quizData.success || !quizData.data.questions || quizData.data.questions.length === 0) {
+        alert("퀴즈를 생성할 수 없습니다. 처리된 곡이 없습니다.");
+        return;
+      }
+      dispatch(setQuizQuestions(quizData.data.questions.map((q: any, idx: number) => {
+        const options = q.wrongAnswers && q.wrongAnswers.length > 0
+          ? [q.correctAnswer, ...q.wrongAnswers].sort(() => Math.random() - 0.5)
+          : undefined;
+        const correctIndex = options ? options.indexOf(q.correctAnswer) : undefined;
+        return {
+          id: q.id || String(idx),
+          type: q.type || "lyrics_fill",
+          questionText: q.questionText,
+          options,
+          correctIndex,
+          correctAnswer: q.correctAnswer,
+          timeLimit: q.timeLimit || 10,
+          metadata: q.metadata,
+          lines: q.type === "lyrics_order" && q.wrongAnswers
+            ? q.wrongAnswers.map((text: string, i: number) => ({ idx: i, text })).sort(() => Math.random() - 0.5)
+            : undefined,
+        };
+      })));
+      dispatch(setGameStatus("playing"));
+    } catch (e) {
+      console.error("Error starting quiz:", e);
+      alert("퀴즈 시작에 실패했습니다.");
+    }
+  };
+
+  if (gameStatus === "playing" && (currentSong || room?.gameMode === "lyrics_quiz")) {
     return (
       <div className="fixed inset-0 bg-black text-white">
         <GameComponent />
@@ -534,142 +568,159 @@ export default function RoomPage() {
         </div>
       </header>
 
-      {/* 메인: 중앙 대기열 카드 */}
-      <main className="relative z-10 flex items-center justify-center min-h-[calc(100vh-80px)] p-4">
-        <div className="w-full max-w-2xl bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl ring-1 ring-white/5">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <ListMusic className="w-6 h-6" style={{ color: config.color }} />
-              <h2 className="text-xl font-bold">대기열</h2>
-              <span className="text-sm text-white/60 bg-white/10 px-2 py-0.5 rounded-full">{songQueue.length}곡</span>
+      {room?.gameMode === "lyrics_quiz" ? (
+        <main className="relative z-10 flex items-center justify-center min-h-[calc(100vh-80px)] p-4">
+          <div className="w-full max-w-lg bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl ring-1 ring-white/5 text-center">
+            <div className="w-20 h-20 rounded-2xl bg-[#FF6B6B]/20 flex items-center justify-center mx-auto mb-6">
+              <MessageSquareText className="w-10 h-10 text-[#FF6B6B]" />
             </div>
+            <h2 className="text-3xl font-bold mb-3">노래 퀴즈</h2>
+            <p className="text-gray-400 mb-8">6가지 퀴즈 유형으로 노래 실력을 겨뤄보세요!</p>
             <button
-              onClick={() => setShowAddSong(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-black hover:opacity-90 transition-opacity shadow-lg shadow-white/5"
-              style={{ backgroundColor: config.color }}
+              onClick={startQuiz}
+              className="w-full py-4 rounded-xl bg-[#FF6B6B] text-black font-bold text-xl hover:bg-[#FF5252] transition-colors shadow-lg"
             >
-              <Plus className="w-5 h-5" />
-              곡 추가
+              퀴즈 시작
             </button>
           </div>
-          
-          {songQueue.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div 
-                className="relative mb-8 group cursor-pointer" 
-                onClick={() => setShowAddSong(true)}
-              >
-                <div 
-                  className="absolute inset-0 rounded-full blur-2xl opacity-20 group-hover:opacity-40 transition-opacity duration-500"
-                  style={{ backgroundColor: config.color }} 
-                />
-                <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-white/10 to-white/5 flex items-center justify-center border border-white/10 group-hover:scale-110 transition-transform duration-300 ring-1 ring-white/5 group-hover:ring-white/20">
-                  <Plus className="w-10 h-10 text-white/40 group-hover:text-white transition-colors" />
-                </div>
+        </main>
+      ) : (
+        <main className="relative z-10 flex items-center justify-center min-h-[calc(100vh-80px)] p-4">
+          <div className="w-full max-w-2xl bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl ring-1 ring-white/5">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <ListMusic className="w-6 h-6" style={{ color: config.color }} />
+                <h2 className="text-xl font-bold">대기열</h2>
+                <span className="text-sm text-white/60 bg-white/10 px-2 py-0.5 rounded-full">{songQueue.length}곡</span>
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">대기열이 비었습니다</h3>
-              <p className="text-gray-400 text-sm mb-8 leading-relaxed">
-                지금 바로 노래를 예약하고<br/>무대의 주인공이 되어보세요!
-              </p>
               <button
                 onClick={() => setShowAddSong(true)}
-                className="flex items-center gap-2 px-8 py-3 rounded-full font-bold text-black hover:scale-105 active:scale-95 transition-all shadow-lg shadow-white/5"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-black hover:opacity-90 transition-opacity shadow-lg shadow-white/5"
                 style={{ backgroundColor: config.color }}
               >
-                <Music className="w-5 h-5" />
-                첫 곡 예약하기
+                <Plus className="w-5 h-5" />
+                곡 추가
               </button>
             </div>
-          ) : (
-            <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-              {songQueue.map((song, idx) => (
-                <motion.div
-                  key={song.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.05 }}
-                  className="group relative flex items-center gap-4 p-4 bg-black/40 hover:bg-white/10 border border-white/5 hover:border-white/20 rounded-2xl transition-all duration-300 backdrop-blur-sm"
+            
+            {songQueue.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div 
+                  className="relative mb-8 group cursor-pointer" 
+                  onClick={() => setShowAddSong(true)}
                 >
                   <div 
-                    className="w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold shrink-0 shadow-lg"
-                    style={{ backgroundColor: `${config.color}20`, color: config.color }}
+                    className="absolute inset-0 rounded-full blur-2xl opacity-20 group-hover:opacity-40 transition-opacity duration-500"
+                    style={{ backgroundColor: config.color }} 
+                  />
+                  <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-white/10 to-white/5 flex items-center justify-center border border-white/10 group-hover:scale-110 transition-transform duration-300 ring-1 ring-white/5 group-hover:ring-white/20">
+                    <Plus className="w-10 h-10 text-white/40 group-hover:text-white transition-colors" />
+                  </div>
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">대기열이 비었습니다</h3>
+                <p className="text-gray-400 text-sm mb-8 leading-relaxed">
+                  지금 바로 노래를 예약하고<br/>무대의 주인공이 되어보세요!
+                </p>
+                <button
+                  onClick={() => setShowAddSong(true)}
+                  className="flex items-center gap-2 px-8 py-3 rounded-full font-bold text-black hover:scale-105 active:scale-95 transition-all shadow-lg shadow-white/5"
+                  style={{ backgroundColor: config.color }}
+                >
+                  <Music className="w-5 h-5" />
+                  첫 곡 예약하기
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                {songQueue.map((song, idx) => (
+                  <motion.div
+                    key={song.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.05 }}
+                    className="group relative flex items-center gap-4 p-4 bg-black/40 hover:bg-white/10 border border-white/5 hover:border-white/20 rounded-2xl transition-all duration-300 backdrop-blur-sm"
                   >
-                    {idx + 1}
-                  </div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="font-bold text-lg truncate text-white/90 group-hover:text-white transition-colors">{song.title}</p>
-                      {idx === 0 && (
-                        <span className="px-2 py-0.5 rounded-full bg-white/10 text-[10px] font-bold text-white/60 border border-white/5">
-                          NEXT
-                        </span>
-                      )}
+                    <div 
+                      className="w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold shrink-0 shadow-lg"
+                      style={{ backgroundColor: `${config.color}20`, color: config.color }}
+                    >
+                      {idx + 1}
                     </div>
-                    <p className="text-sm text-white/50 truncate flex items-center gap-2">
-                      <span>{song.artist}</span>
-                      <span className="w-1 h-1 rounded-full bg-white/20" />
-                      <span className="text-white/30">예약: {song.addedBy}</span>
-                    </p>
-                  </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="font-bold text-lg truncate text-white/90 group-hover:text-white transition-colors">{song.title}</p>
+                        {idx === 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-white/10 text-[10px] font-bold text-white/60 border border-white/5">
+                            NEXT
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-white/50 truncate flex items-center gap-2">
+                        <span>{song.artist}</span>
+                        <span className="w-1 h-1 rounded-full bg-white/20" />
+                        <span className="text-white/30">예약: {song.addedBy}</span>
+                      </p>
+                    </div>
 
-                  <div className="flex items-center gap-3 shrink-0">
-                    {song.status === "processing" && (
-                      <div className="flex flex-col gap-1.5 min-w-[140px] p-3 rounded-xl bg-black/20 border border-white/5">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-yellow-400" />
-                            <span className="text-xs text-yellow-400 font-bold">
-                              {song.processingStep === "download" && "다운로드"}
-                              {song.processingStep === "demucs" && "음원 분리"}
-                              {song.processingStep === "whisper" && "자막 생성"}
-                              {song.processingStep === "crepe" && "음정 분석"}
-                              {!song.processingStep && "준비 중"}
+                    <div className="flex items-center gap-3 shrink-0">
+                      {song.status === "processing" && (
+                        <div className="flex flex-col gap-1.5 min-w-[140px] p-3 rounded-xl bg-black/20 border border-white/5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-yellow-400" />
+                              <span className="text-xs text-yellow-400 font-bold">
+                                {song.processingStep === "download" && "다운로드"}
+                                {song.processingStep === "demucs" && "음원 분리"}
+                                {song.processingStep === "whisper" && "자막 생성"}
+                                {song.processingStep === "crepe" && "음정 분석"}
+                                {!song.processingStep && "준비 중"}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-mono text-white/40">
+                              {song.processingProgress || 0}%
                             </span>
                           </div>
-                          <span className="text-[10px] font-mono text-white/40">
-                            {song.processingProgress || 0}%
-                          </span>
+                          <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-gradient-to-r from-yellow-400 to-orange-400 transition-all duration-300"
+                              style={{ width: `${song.processingProgress || 0}%` }}
+                            />
+                          </div>
                         </div>
-                        <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-gradient-to-r from-yellow-400 to-orange-400 transition-all duration-300"
-                            style={{ width: `${song.processingProgress || 0}%` }}
-                          />
+                      )}
+
+                      {song.status === "failed" && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20">
+                          <AlertCircle className="w-4 h-4 text-red-400" />
+                          <span className="text-xs font-bold text-red-400">실패</span>
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {song.status === "failed" && (
-                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20">
-                        <AlertCircle className="w-4 h-4 text-red-400" />
-                        <span className="text-xs font-bold text-red-400">실패</span>
-                      </div>
-                    )}
+                      {song.status === "ready" && (
+                        <button
+                          onClick={() => playSong(song)}
+                          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-green-500 text-black font-bold hover:scale-105 active:scale-95 transition-all shadow-lg shadow-green-500/20"
+                        >
+                          <Play className="w-4 h-4 fill-current" />
+                          <span className="text-sm hidden sm:inline">시작</span>
+                        </button>
+                      )}
 
-                    {song.status === "ready" && (
                       <button
-                        onClick={() => playSong(song)}
-                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-green-500 text-black font-bold hover:scale-105 active:scale-95 transition-all shadow-lg shadow-green-500/20"
+                        onClick={() => dispatch(removeFromQueue(song.id))}
+                        className="p-2.5 rounded-xl text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
                       >
-                        <Play className="w-4 h-4 fill-current" />
-                        <span className="text-sm hidden sm:inline">시작</span>
+                        <Trash2 className="w-5 h-5" />
                       </button>
-                    )}
-
-                    <button
-                      onClick={() => dispatch(removeFromQueue(song.id))}
-                      className="p-2.5 rounded-xl text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </div>
-      </main>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+        </main>
+      )}
 
       {/* 곡 추가 모달 (기존 유지) */}
       <AnimatePresence>
