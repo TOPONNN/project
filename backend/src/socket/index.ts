@@ -61,46 +61,55 @@ export function initializeSocket(httpServer: HttpServer): Server {
           socket.id
         );
 
-        socket.join(data.code);
-        socket.data.roomCode = data.code;
-        socket.data.participantId = participant.id;
-        socket.data.nickname = nickname;
-        socket.data.gameMode = room.gameMode;
+         socket.join(data.code);
+         socket.data.roomCode = data.code;
+         socket.data.participantId = participant.id;
+         socket.data.nickname = nickname;
+         socket.data.gameMode = room.gameMode;
 
-        const participantData = {
-          id: participant.id,
-          nickname: participant.nickname,
-          isHost: participant.isHost,
-          score: participant.score,
-        };
-        
-        socket.to(data.code).emit("room:participant:joined", participantData);
-        await redisPubSub.publishParticipantJoined(data.code, participantData);
+         // Get room with user data for profile images
+         const roomWithUsers = await roomService.getRoomWithUsers(data.code);
+         
+         // Get profile image for the joining participant
+         const joiningParticipantWithUser = roomWithUsers?.participants.find((p: RoomParticipant) => p.id === participant.id);
+         const profileImage = joiningParticipantWithUser?.user?.profileImage || null;
 
-        const connectedParticipants = (room.participants || [])
-          .filter((p: RoomParticipant) => p.isConnected);
+         const participantData = {
+           id: participant.id,
+           nickname: participant.nickname,
+           isHost: participant.isHost,
+           score: participant.score,
+           profileImage,
+         };
+         
+         socket.to(data.code).emit("room:participant:joined", participantData);
+         await redisPubSub.publishParticipantJoined(data.code, participantData);
 
-         socket.emit("room:joined", { 
-           room: {
-             id: room.id,
-             code: room.code,
-             name: room.name,
-             gameMode: room.gameMode,
-             status: room.status,
-             hostId: room.hostId,
-             participants: connectedParticipants.map((p: RoomParticipant) => ({
-               id: p.id,
-               nickname: p.nickname,
-               isHost: p.isHost,
-               score: p.score,
-             })),
-           },
-           participant: {
-             id: participant.id,
-             nickname: participant.nickname,
-             isHost: participant.isHost,
-           }
-         });
+         const connectedParticipants = (roomWithUsers?.participants || [])
+           .filter((p: RoomParticipant) => p.isConnected);
+
+          socket.emit("room:joined", { 
+            room: {
+              id: room.id,
+              code: room.code,
+              name: room.name,
+              gameMode: room.gameMode,
+              status: room.status,
+              hostId: room.hostId,
+              participants: connectedParticipants.map((p: RoomParticipant) => ({
+                id: p.id,
+                nickname: p.nickname,
+                isHost: p.isHost,
+                score: p.score,
+                profileImage: p.user?.profileImage || null,
+              })),
+            },
+            participant: {
+              id: participant.id,
+              nickname: participant.nickname,
+              isHost: participant.isHost,
+            }
+          });
 
          // Send quiz state if game is in progress (for rejoin)
          const quizState = lyricsQuizHandler.getQuizState(data.code);

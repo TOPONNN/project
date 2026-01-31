@@ -568,9 +568,17 @@ export default function RoomPage() {
               transition={{ delay: idx * 0.05 }}
               className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
             >
-              <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarGradients[idx % avatarGradients.length]} flex items-center justify-center text-sm font-bold text-white shrink-0`}>
-                {p.nickname?.charAt(0) || '?'}
-              </div>
+              {p.profileImage ? (
+                <img 
+                  src={p.profileImage} 
+                  alt={p.nickname} 
+                  className="w-8 h-8 rounded-full object-cover shrink-0 ring-2 ring-white/20"
+                />
+              ) : (
+                <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarGradients[idx % avatarGradients.length]} flex items-center justify-center text-sm font-bold text-white shrink-0`}>
+                  {p.nickname?.charAt(0) || '?'}
+                </div>
+              )}
               <span className="text-white font-medium truncate">{p.nickname}</span>
               {p.isHost && (
                 <span className="text-[10px] font-bold bg-[#FFD700]/20 text-[#FFD700] px-2 py-0.5 rounded-full shrink-0">HOST</span>
