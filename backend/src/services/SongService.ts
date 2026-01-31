@@ -355,6 +355,65 @@ export class SongService {
     return shuffle(questions).slice(0, count);
   }
 
+  async warmupQuizCache(): Promise<void> {
+    console.log("[QuizCache] Starting warmup...");
+    try {
+      // 1. Fetch and cache TJ chart
+      const cacheKey = "tj:chart:monthly";
+      let tjSongs: { number: string; title: string; artist: string }[] = [];
+      
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        tjSongs = JSON.parse(cached);
+        console.log(`[QuizCache] TJ chart loaded from cache (${tjSongs.length} songs)`);
+      } else {
+        tjSongs = await tjKaraokeService.searchPopular("monthly", "KOR", 100);
+        if (tjSongs.length > 0) {
+          await redis.setex(cacheKey, 3600, JSON.stringify(tjSongs));
+          console.log(`[QuizCache] TJ chart fetched and cached (${tjSongs.length} songs)`);
+        }
+      }
+
+      if (tjSongs.length === 0) {
+        console.warn("[QuizCache] No TJ songs available");
+        return;
+      }
+
+      // 2. Pre-cache YouTube search results for all songs (batch of 5 at a time to avoid overload)
+      const cleanTitle = (title: string): string => 
+        title.replace(/\s*[\(（\[【].*?[\)）\]】]/g, '').replace(/[\(（\[【\)）\]】]/g, '').trim();
+
+      let cachedCount = 0;
+      let searchedCount = 0;
+
+      for (let i = 0; i < tjSongs.length; i += 5) {
+        const batch = tjSongs.slice(i, i + 5);
+        await Promise.all(
+          batch.map(async (song) => {
+            const searchQuery = `${cleanTitle(song.artist)} ${cleanTitle(song.title)}`;
+            const ytCacheKey = `yt:mv:${searchQuery}`;
+            
+            const existing = await redis.get(ytCacheKey);
+            if (existing) {
+              cachedCount++;
+              return;
+            }
+            
+            const videos = await youtubeService.searchVideos(searchQuery, 1).catch(() => []);
+            if (videos.length > 0) {
+              await redis.setex(ytCacheKey, 86400, JSON.stringify(videos));
+            }
+            searchedCount++;
+          })
+        );
+      }
+      
+      console.log(`[QuizCache] Warmup complete: ${cachedCount} cached, ${searchedCount} searched`);
+    } catch (e) {
+      console.error("[QuizCache] Warmup error:", e);
+    }
+  }
+
   async generateTJEnhancedQuiz(count: number = 10): Promise<any[]> {
     // 1. Get TJ chart songs for quiz material (Redis-cached)
     let tjSongs: { number: string; title: string; artist: string }[] = [];
@@ -446,7 +505,7 @@ export class SongService {
      }
 
       const audioQuestions = tjQuestions.filter(q => q.type === "title_guess" || q.type === "artist_guess");
-      const questionsToSearch = audioQuestions.slice(0, 10);
+      const questionsToSearch = audioQuestions;
       if (questionsToSearch.length > 0) {
         try {
           const searchResults = await Promise.all(

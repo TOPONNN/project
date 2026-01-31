@@ -13,6 +13,7 @@ import roomRoutes from "./routes/rooms";
 import songRoutes from "./routes/songs";
 import searchRoutes from "./routes/search";
 import livekitRoutes from "./routes/livekit";
+import { songService } from "./services/SongService";
 
 dotenv.config();
 
@@ -116,6 +117,14 @@ async function bootstrap() {
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
+
+    // Pre-cache quiz data on startup (5s delay) and every hour
+    setTimeout(() => {
+      songService.warmupQuizCache().catch(e => console.error("[QuizCache] Startup warmup failed:", e));
+    }, 5000);
+    setInterval(() => {
+      songService.warmupQuizCache().catch(e => console.error("[QuizCache] Scheduled warmup failed:", e));
+    }, 3600000);
   } catch (error) {
     console.error("Bootstrap error:", error);
     process.exit(1);
