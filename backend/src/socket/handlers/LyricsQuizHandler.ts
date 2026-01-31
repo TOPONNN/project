@@ -102,8 +102,6 @@ export class LyricsQuizHandler {
   }
 
   public initializeQuizState(roomCode: string, questions: any[]): void {
-    if (this.quizStates.has(roomCode)) return;
-
     const state: QuizState = {
       currentQuestionIndex: 0,
       questions,

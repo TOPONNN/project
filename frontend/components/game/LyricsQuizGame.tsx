@@ -77,7 +77,9 @@ export default function LyricsQuizGame() {
    const [wrongCount, setWrongCount] = useState(0);
    const [maxStreakLocal, setMaxStreakLocal] = useState(0);
 
-  const currentQuestion = quizQuestions[currentQuestionIndex];
+   const cleanDisplay = (s: string) => s?.replace(/\s*[\(（\[【].*?[\)）\]】]/g, '').trim() || '';
+
+   const currentQuestion = quizQuestions[currentQuestionIndex];
 
    useEffect(() => {
      if (currentQuestion) {
@@ -208,7 +210,12 @@ export default function LyricsQuizGame() {
         setWrongCount(prev => prev + 1);
       }
 
-      const advanceDelay = myResult?.isCorrect ? 2000 : 4000;
+      let advanceDelay = 4000;
+      if (myResult?.isCorrect) {
+        advanceDelay = 2000;
+      } else if (remoteResult && !myResult) {
+        advanceDelay = 2500;
+      }
 
       const capturedIndex = currentQuestionIndex;
       const timeout = setTimeout(() => {
@@ -220,11 +227,7 @@ export default function LyricsQuizGame() {
           audioRef.current = null;
         }
         setYoutubeVideoId(null);
-        if (currentQuestionIndex < quizQuestions.length - 1) {
-          dispatch(nextQuestion());
-        } else {
-          dispatch(setGameStatus("finished"));
-        }
+        dispatch(nextQuestion());
       }, advanceDelay);
       return () => clearTimeout(timeout);
     }
@@ -441,7 +444,7 @@ export default function LyricsQuizGame() {
                   <div className="flex-shrink-0 w-12 h-12 bg-black/20 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-inner">
                     {KAHOOT_COLORS[index].shape}
                   </div>
-                  <span className="text-xl font-bold text-white drop-shadow-md leading-tight">{option}</span>
+                   <span className="text-xl font-bold text-white drop-shadow-md leading-tight">{cleanDisplay(option)}</span>
                   
                   {isCorrect && (
                     <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute top-2 right-2">
@@ -875,13 +878,13 @@ export default function LyricsQuizGame() {
                     <div className="flex flex-col">
                       {roundResults.find(r => r.odId !== "local" && r.odName !== "나") ? (
                         <>
-                          <span className="text-4xl font-black">{roundResults.find(r => r.odId !== "local" && r.odName !== "나")?.odName}님이 정답!</span>
-                          <span className="text-2xl font-bold opacity-80">정답: {currentQuestion?.correctAnswer}</span>
+                           <span className="text-4xl font-black">{roundResults.find(r => r.odId !== "local" && r.odName !== "나")?.odName}님이 정답!</span>
+                           <span className="text-2xl font-bold opacity-80">정답: {cleanDisplay(currentQuestion?.correctAnswer || '')}</span>
                         </>
                       ) : (
                         <>
-                          <span className="text-5xl font-black">오답!</span>
-                          <span className="text-2xl font-bold opacity-80">정답: {currentQuestion?.correctAnswer}</span>
+                           <span className="text-5xl font-black">오답!</span>
+                           <span className="text-2xl font-bold opacity-80">정답: {cleanDisplay(currentQuestion?.correctAnswer || '')}</span>
                         </>
                       )}
                     </div>

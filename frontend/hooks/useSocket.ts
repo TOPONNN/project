@@ -116,13 +116,7 @@ export function useSocket(roomCode: string | null) {
         isCorrect: true,
         points: data.points || 0,
       }]));
-      setTimeout(() => {
-        if (data.questionIndex >= data.totalQuestions - 1) {
-          dispatch(setGameStatus("finished"));
-        } else {
-          dispatch(nextQuestion());
-        }
-      }, 1500);
+      // LyricsQuizGame's reveal effect handles advance timing
     });
 
     // Queue synchronization listeners
