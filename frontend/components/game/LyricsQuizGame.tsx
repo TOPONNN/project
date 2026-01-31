@@ -67,7 +67,8 @@ export default function LyricsQuizGame() {
    const [isRestarting, setIsRestarting] = useState(false);
    const hasProcessedRevealRef = useRef(false);
    const streakRef = useRef(streak);
-   
+   const audioRef = useRef<HTMLAudioElement | null>(null);
+    
    const [ordering, setOrdering] = useState<number[]>([]);
    const [textAnswer, setTextAnswer] = useState("");
 
@@ -121,6 +122,36 @@ export default function LyricsQuizGame() {
     return () => clearInterval(timer);
   }, [currentQuestion, isAnswerRevealed, submitted, handleTimeUp]);
 
+  // Audio playback for title_guess / artist_guess questions
+  useEffect(() => {
+    if (!currentQuestion) return;
+    
+    const audioUrl = currentQuestion.metadata?.audioUrl;
+    if (!audioUrl) {
+      // Stop any playing audio
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      return;
+    }
+    
+    const audio = new Audio(audioUrl);
+    audioRef.current = audio;
+    
+    // If there's a start time in metadata, seek to it
+    const startTime = currentQuestion.metadata?.audioStartTime || 0;
+    audio.currentTime = startTime;
+    audio.volume = 0.5;
+    audio.play().catch(() => {}); // Ignore autoplay errors
+    
+    return () => {
+      audio.pause();
+      audio.src = '';
+      audioRef.current = null;
+    };
+  }, [currentQuestionIndex, currentQuestion]);
+
   useEffect(() => {
     streakRef.current = streak;
   }, [streak]);
@@ -140,14 +171,20 @@ export default function LyricsQuizGame() {
         }
       }
 
+      const advanceDelay = myResult?.isCorrect ? 2000 : 4000;
+
       const timeout = setTimeout(() => {
         setShowResults(false);
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current = null;
+        }
         if (currentQuestionIndex < quizQuestions.length - 1) {
           dispatch(nextQuestion());
         } else {
           dispatch(setGameStatus("finished"));
         }
-      }, 5000);
+      }, advanceDelay);
       return () => clearTimeout(timeout);
     }
 
@@ -159,6 +196,9 @@ export default function LyricsQuizGame() {
    const handleSelectAnswer = (index: number) => {
      if (submitted || isAnswerRevealed) return;
      setSubmitted(true);
+     if (audioRef.current) {
+       audioRef.current.pause();
+     }
      dispatch(selectAnswer(index));
      
      let answerValue: any = "";
@@ -195,8 +235,11 @@ export default function LyricsQuizGame() {
    const handleOrderSubmit = () => {
      if (submitted || isAnswerRevealed || ordering.length !== 4) return;
      setSubmitted(true);
-     
-     const correctOrder = currentQuestion.correctOrder || [0, 1, 2, 3];
+     if (audioRef.current) {
+       audioRef.current.pause();
+     }
+      
+      const correctOrder = currentQuestion.correctOrder || [0, 1, 2, 3];
      const isCorrect = JSON.stringify(ordering) === JSON.stringify(correctOrder);
      const points = isCorrect ? Math.round(1000 * (timeLeft / (currentQuestion.timeLimit || 20))) : 0;
 
@@ -221,8 +264,11 @@ export default function LyricsQuizGame() {
      e?.preventDefault();
      if (submitted || isAnswerRevealed || !textAnswer.trim()) return;
      setSubmitted(true);
+     if (audioRef.current) {
+       audioRef.current.pause();
+     }
 
-     const normalize = (s: string) => s.replace(/\s/g, '').toLowerCase();
+     const normalize = (s: string) => s.replace(/\s*[\(（\[].*?[\)）\]]/g, '').replace(/\s/g, '').toLowerCase();
      const isCorrect = normalize(textAnswer.trim()) === normalize(currentQuestion.correctAnswer || "");
      const points = isCorrect ? Math.round(1000 * (timeLeft / (currentQuestion.timeLimit || 20))) : 0;
 
@@ -272,7 +318,7 @@ export default function LyricsQuizGame() {
       dispatch(updateStreak(0));
       
       try {
-        const res = await fetch(`/api/songs/quiz/generate?count=10`);
+        const res = await fetch(`/api/songs/quiz/generate?count=30`);
         const data = await res.json();
         
         if (!data.success || !data.data?.questions) {

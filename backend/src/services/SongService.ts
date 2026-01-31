@@ -220,46 +220,47 @@ export class SongService {
       return a;
     };
 
-    // TITLE_GUESS
-    for (const song of shuffle(songs).slice(0, 2)) {
+     // TITLE_GUESS
+     for (const song of shuffle(songs).slice(0, 4)) {
       const otherTitles = shuffle(allSongs.filter((s: Song) => s.id !== song.id).map((s: Song) => s.title)).slice(0, 3);
       if (otherTitles.length < 3) continue;
       const audioStart = song.duration ? Math.min(30, Math.floor(song.duration * 0.3)) : 30;
-      questions.push(quizRepository.create({
-        songId: song.id,
-        type: QuizType.TITLE_GUESS,
-        questionText: "이 노래의 제목은?",
-        correctAnswer: song.title,
-        wrongAnswers: otherTitles,
-        startTime: audioStart,
-        endTime: audioStart + 10,
-        timeLimit: 20,
-        points: 1000,
-        metadata: { audioStartTime: audioStart, audioEndTime: audioStart + 10 },
-      }));
+       questions.push(quizRepository.create({
+         songId: song.id,
+         type: QuizType.TITLE_GUESS,
+         questionText: "이 노래의 제목은?",
+         correctAnswer: song.title,
+         wrongAnswers: otherTitles,
+         startTime: audioStart,
+         endTime: audioStart + 10,
+         timeLimit: 20,
+         points: 1000,
+         metadata: { audioUrl: song.instrumentalUrl || song.originalUrl, audioStartTime: audioStart, audioEndTime: audioStart + 10 },
+       }));
     }
 
-    // ARTIST_GUESS
-    for (const song of shuffle(songs).slice(0, 2)) {
+     // ARTIST_GUESS
+     for (const song of shuffle(songs).slice(0, 4)) {
       const otherArtists = shuffle(
         [...new Set(allSongs.filter((s: Song) => s.artist !== song.artist).map((s: Song) => s.artist))]
       ).slice(0, 3);
       if (otherArtists.length < 3) continue;
-      questions.push(quizRepository.create({
-        songId: song.id,
-        type: QuizType.ARTIST_GUESS,
-        questionText: `'${song.title}'을(를) 부른 가수는?`,
-        correctAnswer: song.artist,
-        wrongAnswers: otherArtists,
-        startTime: 0,
-        endTime: 0,
-        timeLimit: 15,
-        points: 1000,
-      }));
+       questions.push(quizRepository.create({
+         songId: song.id,
+         type: QuizType.ARTIST_GUESS,
+         questionText: `'${song.title}'을(를) 부른 가수는?`,
+         correctAnswer: song.artist,
+         wrongAnswers: otherArtists,
+         startTime: 0,
+         endTime: 0,
+         timeLimit: 15,
+         points: 1000,
+         metadata: { audioUrl: song.instrumentalUrl || song.originalUrl },
+       }));
     }
 
-    // INITIAL_GUESS
-    for (const song of shuffle(songs).slice(0, 2)) {
+     // INITIAL_GUESS
+     for (const song of shuffle(songs).slice(0, 3)) {
       const initials = getKoreanInitials(song.title);
       if (initials === song.title) continue;
       questions.push(quizRepository.create({
@@ -276,8 +277,8 @@ export class SongService {
       }));
     }
 
-    // LYRICS_FILL
-    for (let q = 0; q < 2; q++) {
+     // LYRICS_FILL
+     for (let q = 0; q < 4; q++) {
       const song = pickRandom(songs);
       const lyrics = song.lyrics || [];
       const validLines = lyrics.filter((l: LyricsLine) => l.text.split(" ").filter((w: string) => w.length > 0).length >= 3);
@@ -301,50 +302,54 @@ export class SongService {
       }));
     }
 
-    // LYRICS_ORDER
-    const orderSong = pickRandom(songs);
-    const orderLyrics = orderSong.lyrics || [];
-    if (orderLyrics.length >= 4) {
-      const startIdx = Math.floor(Math.random() * Math.max(1, orderLyrics.length - 3));
-      const lines = orderLyrics.slice(startIdx, startIdx + 4);
-      if (lines.length === 4) {
-        questions.push(quizRepository.create({
-          songId: orderSong.id,
-          type: QuizType.LYRICS_ORDER,
-          questionText: "다음 가사를 올바른 순서로 배열하세요",
-          correctAnswer: JSON.stringify([0, 1, 2, 3]),
-          wrongAnswers: lines.map((l: LyricsLine) => l.text),
-          startTime: lines[0].startTime,
-          endTime: lines[3].endTime,
-          timeLimit: 25,
-          points: 1000,
-          metadata: { lineTexts: lines.map((l: LyricsLine) => l.text) },
-        }));
-      }
-    }
+     // LYRICS_ORDER
+     for (let lo = 0; lo < 2; lo++) {
+       const orderSong = pickRandom(songs);
+       const orderLyrics = orderSong.lyrics || [];
+       if (orderLyrics.length >= 4) {
+         const startIdx = Math.floor(Math.random() * Math.max(1, orderLyrics.length - 3));
+         const lines = orderLyrics.slice(startIdx, startIdx + 4);
+         if (lines.length === 4) {
+           questions.push(quizRepository.create({
+             songId: orderSong.id,
+             type: QuizType.LYRICS_ORDER,
+             questionText: "다음 가사를 올바른 순서로 배열하세요",
+             correctAnswer: JSON.stringify([0, 1, 2, 3]),
+             wrongAnswers: lines.map((l: LyricsLine) => l.text),
+             startTime: lines[0].startTime,
+             endTime: lines[3].endTime,
+             timeLimit: 25,
+             points: 1000,
+             metadata: { lineTexts: lines.map((l: LyricsLine) => l.text) },
+           }));
+         }
+       }
+     }
 
-    // TRUE_FALSE
-    const tfSong = pickRandom(songs);
-    const tfLyrics = tfSong.lyrics || [];
-    if (tfLyrics.length > 0) {
-      const line = pickRandom(tfLyrics);
-      const isTrue = Math.random() > 0.5;
-      const otherSongs = allSongs.filter((s: Song) => s.id !== tfSong.id);
-      if (isTrue || otherSongs.length > 0) {
-        const displayTitle = isTrue ? tfSong.title : pickRandom(otherSongs).title;
-        questions.push(quizRepository.create({
-          songId: tfSong.id,
-          type: QuizType.TRUE_FALSE,
-          questionText: `이 가사는 '${displayTitle}'의 가사이다: "${line.text}"`,
-          correctAnswer: String(isTrue),
-          wrongAnswers: [],
-          startTime: line.startTime,
-          endTime: line.endTime,
-          timeLimit: 12,
-          points: 1000,
-        }));
-      }
-    }
+     // TRUE_FALSE
+     for (let tf = 0; tf < 2; tf++) {
+       const tfSong = pickRandom(songs);
+       const tfLyrics = tfSong.lyrics || [];
+       if (tfLyrics.length > 0) {
+         const line = pickRandom(tfLyrics);
+         const isTrue = Math.random() > 0.5;
+         const otherSongs = allSongs.filter((s: Song) => s.id !== tfSong.id);
+         if (isTrue || otherSongs.length > 0) {
+           const displayTitle = isTrue ? tfSong.title : pickRandom(otherSongs).title;
+           questions.push(quizRepository.create({
+             songId: tfSong.id,
+             type: QuizType.TRUE_FALSE,
+             questionText: `이 가사는 '${displayTitle}'의 가사이다: "${line.text}"`,
+             correctAnswer: String(isTrue),
+             wrongAnswers: [],
+             startTime: line.startTime,
+             endTime: line.endTime,
+             timeLimit: 12,
+             points: 1000,
+           }));
+         }
+       }
+     }
 
     return shuffle(questions).slice(0, count);
   }
@@ -362,10 +367,10 @@ export class SongService {
     const dbSongs = await this.getSongPool();
     const dbSongIds = dbSongs.map(s => s.id);
 
-    // 3. Generate DB-based questions (lyrics-dependent types)
-    let dbQuestions: any[] = [];
-    if (dbSongIds.length > 0) {
-      const rawQuestions = await this.generateMixedQuiz(dbSongIds, Math.min(count, 5));
+     // 3. Generate DB-based questions (lyrics-dependent types)
+     let dbQuestions: any[] = [];
+     if (dbSongIds.length > 0) {
+       const rawQuestions = await this.generateMixedQuiz(dbSongIds, Math.min(count, 15));
       dbQuestions = rawQuestions.map(q => ({
         type: q.type,
         questionText: q.questionText,
@@ -391,8 +396,8 @@ export class SongService {
     if (tjSongs.length >= 4) {
       const shuffledTJ = shuffle(tjSongs);
 
-      // TITLE_GUESS from TJ (up to 3)
-      for (let i = 0; i < Math.min(3, shuffledTJ.length); i++) {
+       // TITLE_GUESS from TJ (up to 8)
+       for (let i = 0; i < Math.min(8, shuffledTJ.length); i++) {
         const song = shuffledTJ[i];
         const otherTitles = shuffle(
           tjSongs.filter(s => s.title !== song.title).map(s => s.title)
@@ -409,8 +414,8 @@ export class SongService {
         });
       }
 
-      // ARTIST_GUESS from TJ (up to 3)
-      for (let i = 3; i < Math.min(6, shuffledTJ.length); i++) {
+       // ARTIST_GUESS from TJ (up to 8)
+       for (let i = 8; i < Math.min(16, shuffledTJ.length); i++) {
         const song = shuffledTJ[i];
         const uniqueArtists = [...new Set(tjSongs.filter(s => s.artist !== song.artist).map(s => s.artist))];
         const otherArtists = shuffle(uniqueArtists).slice(0, 3);
@@ -426,8 +431,8 @@ export class SongService {
         });
       }
 
-      // INITIAL_GUESS from TJ (up to 2)
-      for (let i = 6; i < Math.min(8, shuffledTJ.length); i++) {
+       // INITIAL_GUESS from TJ (up to 5)
+       for (let i = 16; i < Math.min(21, shuffledTJ.length); i++) {
         const song = shuffledTJ[i];
         const initials = getKoreanInitials(song.title);
         if (initials === song.title) continue;

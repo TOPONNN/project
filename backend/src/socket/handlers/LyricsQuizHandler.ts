@@ -217,8 +217,10 @@ export class LyricsQuizHandler {
     switch (question.type) {
       case "lyrics_fill":
       case "title_guess":
-      case "artist_guess":
-        return answer === question.correctAnswer;
+      case "artist_guess": {
+        const normalize = (s: string) => s.replace(/\s*[\(（\[].*?[\)）\]]/g, '').replace(/\s/g, "").toLowerCase();
+        return normalize(String(answer)) === normalize(question.correctAnswer);
+      }
       case "lyrics_order":
         try {
           const correctOrder = typeof question.correctAnswer === "string"
@@ -229,7 +231,7 @@ export class LyricsQuizHandler {
           return false;
         }
       case "initial_guess": {
-        const normalize = (s: string) => s.replace(/\s/g, "").toLowerCase();
+        const normalize = (s: string) => s.replace(/\s*[\(（\[].*?[\)）\]]/g, '').replace(/\s/g, "").toLowerCase();
         return normalize(String(answer)) === normalize(question.correctAnswer);
       }
       case "true_false":
