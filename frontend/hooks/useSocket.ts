@@ -109,14 +109,19 @@ export function useSocket(roomCode: string | null) {
       dispatch(setGameStatus("playing"));
     });
 
-    socket.on("quiz:force-advance", (data: { questionIndex: number; totalQuestions: number; answeredBy: string; answeredById: string; correctAnswer: string; points: number }) => {
+    socket.on("quiz:force-advance", (data: { questionIndex: number; totalQuestions: number; answeredBy: string; answeredById: string; correctAnswer: string; points: number; isCorrect: boolean }) => {
       dispatch(revealAnswer([{
         odId: data.answeredById || "remote",
         odName: data.answeredBy || "누군가",
-        isCorrect: true,
+        isCorrect: data.isCorrect ?? true,
         points: data.points || 0,
       }]));
       // LyricsQuizGame's reveal effect handles advance timing
+    });
+
+    socket.on("quiz:sync-state", (data: { questions: any[] }) => {
+      dispatch(setQuizQuestions(data.questions));
+      dispatch(setGameStatus("playing"));
     });
 
     // Queue synchronization listeners

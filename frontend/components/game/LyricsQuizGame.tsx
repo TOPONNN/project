@@ -597,11 +597,11 @@ export default function LyricsQuizGame() {
     return (
       <div className="fixed inset-0 bg-[#46178F] flex items-center justify-center p-8 overflow-hidden">
         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="relative z-10 w-full max-w-2xl bg-white/10 backdrop-blur-xl rounded-3xl border border-white/20 p-10 text-center shadow-2xl"
-        >
+         <motion.div
+           initial={{ scale: 0.8, opacity: 0 }}
+           animate={{ scale: 1, opacity: 1 }}
+           className="relative z-10 w-full max-w-2xl max-h-[calc(100vh-4rem)] overflow-y-auto bg-white/10 backdrop-blur-xl rounded-3xl border border-white/20 p-10 text-center shadow-2xl"
+         >
           <Trophy className="w-24 h-24 text-[#FFD700] mx-auto mb-4 drop-shadow-[0_0_20px_rgba(255,215,0,0.5)]" />
           <h2 className="text-5xl font-black text-white mb-8">게임 종료!</h2>
 
@@ -875,19 +875,30 @@ export default function LyricsQuizGame() {
                     <div className="bg-white/20 p-4 rounded-full">
                       <X className="w-16 h-16" />
                     </div>
-                    <div className="flex flex-col">
-                      {roundResults.find(r => r.odId !== "local" && r.odName !== "나") ? (
-                        <>
-                           <span className="text-4xl font-black">{roundResults.find(r => r.odId !== "local" && r.odName !== "나")?.odName}님이 정답!</span>
-                           <span className="text-2xl font-bold opacity-80">정답: {cleanDisplay(currentQuestion?.correctAnswer || '')}</span>
-                        </>
-                      ) : (
-                        <>
-                           <span className="text-5xl font-black">오답!</span>
-                           <span className="text-2xl font-bold opacity-80">정답: {cleanDisplay(currentQuestion?.correctAnswer || '')}</span>
-                        </>
-                      )}
-                    </div>
+                     <div className="flex flex-col">
+                       {(() => {
+                         const remote = roundResults.find(r => r.odId !== "local" && r.odName !== "나");
+                         if (remote) {
+                           return remote.isCorrect ? (
+                             <>
+                               <span className="text-4xl font-black">{remote.odName}님이 정답!</span>
+                               <span className="text-2xl font-bold opacity-80">정답: {cleanDisplay(currentQuestion?.correctAnswer || '')}</span>
+                             </>
+                           ) : (
+                             <>
+                               <span className="text-4xl font-black">{remote.odName}님도 오답!</span>
+                               <span className="text-2xl font-bold opacity-80">정답: {cleanDisplay(currentQuestion?.correctAnswer || '')}</span>
+                             </>
+                           );
+                         }
+                         return (
+                           <>
+                             <span className="text-5xl font-black">오답!</span>
+                             <span className="text-2xl font-bold opacity-80">정답: {cleanDisplay(currentQuestion?.correctAnswer || '')}</span>
+                           </>
+                         );
+                       })()}
+                     </div>
                   </>
                 )}
             </div>

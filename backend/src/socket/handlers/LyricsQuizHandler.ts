@@ -44,29 +44,30 @@ export class LyricsQuizHandler {
       const newStreak = isCorrect ? currentStreak + 1 : 0;
       state.streaks.set(socket.data.participantId, newStreak);
 
-      let points = 0;
-      if (isCorrect) {
-        const timeLeft = data.timeLeft || 0;
-        points = this.calculatePoints(question, timeLeft, newStreak);
-        const currentScore = state.scores.get(socket.data.participantId) || 0;
-        state.scores.set(socket.data.participantId, currentScore + points);
-        await roomService.updateParticipantScore(socket.data.participantId, points);
+       let points = 0;
+       if (isCorrect) {
+         const timeLeft = data.timeLeft || 0;
+         points = this.calculatePoints(question, timeLeft, newStreak);
+         const currentScore = state.scores.get(socket.data.participantId) || 0;
+         state.scores.set(socket.data.participantId, currentScore + points);
+         await roomService.updateParticipantScore(socket.data.participantId, points);
+       }
 
-        // If this question hasn't been answered correctly yet, broadcast force-advance
-        if (!state.answeredQuestions.has(data.questionIndex)) {
-          state.answeredQuestions.add(data.questionIndex);
+       // Force-advance on ANY first answer (moved outside isCorrect)
+       if (!state.answeredQuestions.has(data.questionIndex)) {
+         state.answeredQuestions.add(data.questionIndex);
 
-          // Tell all OTHER clients to advance to next question
-          socket.to(data.roomCode).emit("quiz:force-advance", {
-            questionIndex: data.questionIndex,
-            totalQuestions: state.questions.length,
-            answeredBy: socket.data.nickname || "누군가",
-            answeredById: socket.data.participantId,
-            correctAnswer: question.correctAnswer,
-            points,
-          });
-        }
-      }
+         // Tell all OTHER clients to advance to next question
+         socket.to(data.roomCode).emit("quiz:force-advance", {
+           questionIndex: data.questionIndex,
+           totalQuestions: state.questions.length,
+           answeredBy: socket.data.nickname || "누군가",
+           answeredById: socket.data.participantId,
+           correctAnswer: question.correctAnswer,
+           isCorrect,
+           points,
+         });
+       }
 
       socket.emit("quiz:answer-result", {
         isCorrect,
@@ -101,70 +102,75 @@ export class LyricsQuizHandler {
     });
   }
 
-  public initializeQuizState(roomCode: string, questions: any[]): void {
-    const state: QuizState = {
-      currentQuestionIndex: 0,
-      questions,
-      answers: new Map(),
-      streaks: new Map(),
-      scores: new Map(),
-      answeredQuestions: new Set(),
-    };
-    this.quizStates.set(roomCode, state);
-  }
+   public initializeQuizState(roomCode: string, questions: any[]): void {
+     const state: QuizState = {
+       currentQuestionIndex: 0,
+       questions,
+       answers: new Map(),
+       streaks: new Map(),
+       scores: new Map(),
+       answeredQuestions: new Set(),
+     };
+     this.quizStates.set(roomCode, state);
+   }
 
-  async startGame(roomCode: string, songId?: string): Promise<void> {
-    const quizQuestionCount = songId ? 10 : 10;
-    const questions = await songService.generateTJEnhancedQuiz(quizQuestionCount);
-    if (questions.length === 0) {
-      this.io.to(roomCode).emit("error", { message: "퀴즈 문제를 생성할 수 없습니다." });
-      return;
-    }
+   public getQuizState(roomCode: string) {
+     return this.quizStates.get(roomCode);
+   }
 
-    await roomService.updateRoomStatus(roomCode, RoomStatus.PLAYING);
+   async startGame(roomCode: string, songId?: string): Promise<void> {
+     const quizQuestionCount = songId ? 10 : 10;
+     const questions = await songService.generateTJEnhancedQuiz(quizQuestionCount);
+     if (questions.length === 0) {
+       this.io.to(roomCode).emit("error", { message: "퀴즈 문제를 생성할 수 없습니다." });
+       return;
+     }
 
-    const state: QuizState = {
-      currentQuestionIndex: 0,
-      questions,
-      answers: new Map(),
-      streaks: new Map(),
-      scores: new Map(),
-      answeredQuestions: new Set(),
-    };
-    this.quizStates.set(roomCode, state);
+     await roomService.updateRoomStatus(roomCode, RoomStatus.PLAYING);
 
-    this.io.to(roomCode).emit("game:started", {
-      song: { id: "quiz", title: "노래 퀴즈", artist: "" },
-    });
-    const questionsData = questions.map((q: any, idx: number) => {
-      const options = q.wrongAnswers && q.wrongAnswers.length > 0
-        ? this.shuffleArray([q.correctAnswer, ...q.wrongAnswers])
-        : undefined;
-      const correctIndex = options ? options.indexOf(q.correctAnswer) : undefined;
-      let lines: { idx: number; text: string }[] | undefined;
-      if (q.type === "lyrics_order" && Array.isArray(q.wrongAnswers)) {
-        lines = [];
-        for (let i = 0; i < q.wrongAnswers.length; i++) {
-          lines.push({ idx: i, text: q.wrongAnswers[i] });
-        }
-        lines = lines.sort(() => Math.random() - 0.5);
-      }
-      return {
-        id: String(idx),
-        type: q.type,
-        questionText: q.questionText,
-        options,
-        correctIndex,
-        correctAnswer: q.correctAnswer,
-        timeLimit: q.timeLimit,
-        points: q.points,
-        metadata: q.metadata,
-        lines,
-      };
-    });
+     const questionsData = questions.map((q: any, idx: number) => {
+       const options = q.wrongAnswers && q.wrongAnswers.length > 0
+         ? this.shuffleArray([q.correctAnswer, ...q.wrongAnswers])
+         : undefined;
+       const correctIndex = options ? options.indexOf(q.correctAnswer) : undefined;
+       let lines: { idx: number; text: string }[] | undefined;
+       if (q.type === "lyrics_order" && Array.isArray(q.wrongAnswers)) {
+         lines = [];
+         for (let i = 0; i < q.wrongAnswers.length; i++) {
+           lines.push({ idx: i, text: q.wrongAnswers[i] });
+         }
+         lines = lines.sort(() => Math.random() - 0.5);
+       }
+       return {
+         id: String(idx),
+         type: q.type,
+         questionText: q.questionText,
+         options,
+         correctIndex,
+         correctAnswer: q.correctAnswer,
+         timeLimit: q.timeLimit,
+         points: q.points,
+         metadata: q.metadata,
+         lines,
+       };
+     });
 
-    this.io.to(roomCode).emit("quiz:questions-data", questionsData);
-  }
+     const state: QuizState = {
+       currentQuestionIndex: 0,
+       questions: questionsData,
+       answers: new Map(),
+       streaks: new Map(),
+       scores: new Map(),
+       answeredQuestions: new Set(),
+     };
+     this.quizStates.set(roomCode, state);
+
+     this.io.to(roomCode).emit("game:started", {
+       song: { id: "quiz", title: "노래 퀴즈", artist: "" },
+     });
+
+     this.io.to(roomCode).emit("quiz:questions-data", questionsData);
+   }
 
   async nextQuestion(roomCode: string): Promise<void> {
     const state = this.quizStates.get(roomCode);
