@@ -112,6 +112,13 @@ export class RoomService {
     });
   }
 
+  async getRoomWithUsers(code: string): Promise<Room | null> {
+    return roomRepository.findOne({
+      where: { code },
+      relations: ["participants", "participants.user"],
+    });
+  }
+
   async getPublicRooms(gameMode?: GameMode): Promise<Room[]> {
     const query = roomRepository
       .createQueryBuilder("room")

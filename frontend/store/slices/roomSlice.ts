@@ -8,6 +8,7 @@ interface Participant {
   isHost: boolean;
   isReady: boolean;
   score?: number;
+  profileImage?: string | null;
 }
 
 interface RoomState {
