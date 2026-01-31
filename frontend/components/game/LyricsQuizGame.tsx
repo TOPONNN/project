@@ -368,7 +368,7 @@ export default function LyricsQuizGame() {
       dispatch(updateStreak(0));
       
       try {
-        const res = await fetch(`/api/songs/quiz/generate?count=30`);
+        const res = await fetch(`/api/songs/quiz/generate?count=50`);
         const data = await res.json();
         
         if (!data.success || !data.data?.questions) {
