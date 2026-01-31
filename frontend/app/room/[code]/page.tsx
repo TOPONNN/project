@@ -7,7 +7,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { 
   Music, Target, MessageSquareText, Swords, ArrowLeft, Users, Copy, Check, 
-  Loader2, Play, Plus, X, Disc3, AlertCircle, ListMusic, Trash2, SkipForward
+  Loader2, Play, Plus, X, Disc3, AlertCircle, ListMusic, Trash2, SkipForward,
+  Mic, MicOff, Video, CameraOff
 } from "lucide-react";
 import type { RootState } from "@/store";
 import { setRoom } from "@/store/slices/roomSlice";
@@ -512,20 +513,20 @@ export default function RoomPage() {
       <div className="fixed inset-0 bg-black text-white">
         <GameComponent />
         
-        <div className="absolute top-4 left-4 z-50">
-          <button
-            onClick={() => {
-              dispatch(setGameStatus("waiting"));
-              dispatch(setCurrentSong(null));
-            }}
-            className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/50 backdrop-blur-md text-white/80 hover:text-white hover:bg-black/70 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            <span>대기실</span>
-          </button>
-        </div>
+        {/* Top-left: small back button - compact, doesn't block quiz content */}
+        <button
+          onClick={() => {
+            dispatch(setGameStatus("waiting"));
+            dispatch(setCurrentSong(null));
+          }}
+          className="absolute top-3 left-3 z-50 p-2 rounded-full bg-black/40 backdrop-blur-sm text-white/50 hover:text-white hover:bg-black/60 transition-all"
+          title="대기실로 돌아가기"
+        >
+          <ArrowLeft className="w-4 h-4" />
+        </button>
 
-        <div className="absolute top-4 right-4 w-48 h-36 rounded-xl overflow-hidden border border-white/20 shadow-2xl z-50">
+        {/* Top-right: Camera overlay - bigger, nice layout */}
+        <div className="absolute top-3 right-3 w-64 h-48 rounded-2xl overflow-hidden border border-white/20 shadow-2xl z-40 bg-black/50">
           <VideoRoom
             roomCode={code}
             participantName={userName}
@@ -535,7 +536,31 @@ export default function RoomPage() {
           />
         </div>
 
-
+        {/* Bottom-right: Media controls */}
+        <div className="absolute bottom-4 right-4 z-50 flex items-center gap-2">
+          <button
+            onClick={handleMicToggle}
+            className={`p-3 rounded-full backdrop-blur-md transition-all ${
+              mediaStatus.isMicOn
+                ? "bg-white/10 hover:bg-white/20 text-white"
+                : "bg-red-500/80 hover:bg-red-500 text-white"
+            }`}
+            title={mediaStatus.isMicOn ? "마이크 끄기" : "마이크 켜기"}
+          >
+            {mediaStatus.isMicOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+          </button>
+          <button
+            onClick={handleCameraToggle}
+            className={`p-3 rounded-full backdrop-blur-md transition-all ${
+              mediaStatus.isCameraOn
+                ? "bg-white/10 hover:bg-white/20 text-white"
+                : "bg-red-500/80 hover:bg-red-500 text-white"
+            }`}
+            title={mediaStatus.isCameraOn ? "카메라 끄기" : "카메라 켜기"}
+          >
+            {mediaStatus.isCameraOn ? <Video className="w-5 h-5" /> : <CameraOff className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
     );
   }

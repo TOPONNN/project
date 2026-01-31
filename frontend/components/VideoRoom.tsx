@@ -218,13 +218,14 @@ function VideoGrid() {
       {cameraTracks.map((trackRef) => (
         <div
           key={trackRef.participant.sid}
-          className="relative bg-zinc-900 rounded-lg overflow-hidden"
+          className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/5"
         >
           <VideoTrack
             trackRef={trackRef}
             className="w-full h-full object-cover"
           />
-          <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/60 rounded text-xs text-white">
+          <div className="absolute bottom-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-full text-[10px] font-bold text-white/90 border border-white/10 flex items-center gap-1.5 shadow-lg">
+             <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)]" />
             {trackRef.participant.name || trackRef.participant.identity}
           </div>
         </div>
