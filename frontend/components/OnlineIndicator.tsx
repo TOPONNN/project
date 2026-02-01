@@ -1,21 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Users, X } from "lucide-react";
-import { io, Socket } from "socket.io-client";
-
-interface OnlineUser {
-  nickname: string;
-  profileImage: string | null;
-  currentPage: string;
-  lastSeen: number;
-}
-
-interface OnlineData {
-  count: number;
-  users: OnlineUser[];
-}
+import { usePresence } from "@/components/PresenceProvider";
 
 const avatarGradients = [
   'from-purple-500 to-pink-500',
@@ -26,41 +14,8 @@ const avatarGradients = [
 ];
 
 export default function OnlineIndicator() {
-  const [onlineData, setOnlineData] = useState<OnlineData>({ count: 0, users: [] });
+  const onlineData = usePresence();
   const [expanded, setExpanded] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-
-    const socket: Socket = io({
-      transports: ["websocket", "polling"],
-    });
-
-    socket.on("connect", () => {
-      const userStr = localStorage.getItem("user");
-      let user = null;
-      try {
-        user = userStr ? JSON.parse(userStr) : null;
-      } catch {
-        // ignore invalid json
-      }
-
-      socket.emit("presence:join", {
-        nickname: user?.name || "게스트",
-        profileImage: user?.profileImage || null,
-        currentPage: window.location.pathname,
-      });
-    });
-
-    socket.on("presence:update", (data: OnlineData) => {
-      setOnlineData(data);
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, []);
 
   const getPageName = (path: string) => {
     if (path === '/') return '메인';
@@ -72,14 +27,12 @@ export default function OnlineIndicator() {
     return '탐색 중';
   };
 
-  if (!mounted) return null;
-
-   return (
-     <motion.div
-       className="absolute bottom-6 right-6 z-30"
-       initial={{ opacity: 0, y: 20 }}
-       animate={{ opacity: 1, y: 0 }}
-     >
+  return (
+    <motion.div
+      className="absolute bottom-6 right-6 z-30"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+    >
       <motion.div
         onClick={() => setExpanded(!expanded)}
         className="cursor-pointer flex items-center gap-3 px-4 py-2.5 bg-black/60 backdrop-blur-xl border border-white/10 rounded-full shadow-2xl hover:bg-black/80 transition-colors"

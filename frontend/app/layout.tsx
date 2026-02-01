@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import PresenceProvider from "@/components/PresenceProvider";
 import { ReduxProvider } from "@/store/provider";
 import { Toaster } from "sonner";
 import "./globals.css";
@@ -16,7 +17,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        <ReduxProvider>{children}</ReduxProvider>
+        <PresenceProvider>
+          <ReduxProvider>{children}</ReduxProvider>
+        </PresenceProvider>
         <Toaster 
           theme="dark" 
           position="top-center"
