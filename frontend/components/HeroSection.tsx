@@ -147,12 +147,18 @@ export default function HeroSection() {
           loop
           muted
           playsInline
-          className="absolute inset-0 w-full h-full object-cover opacity-50"
+          className="absolute inset-0 w-full h-full object-cover opacity-70"
         >
           <source src="/hero-video.webm" type="video/webm" />
           <source src="/hero-video.mp4" type="video/mp4" />
         </video>
-        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/80" />
+        <motion.div 
+          className="absolute inset-0"
+          animate={{ 
+            background: `linear-gradient(to bottom, rgba(0,0,0,0.6), ${currentMode.accent}15, rgba(0,0,0,0.7))` 
+          }}
+          transition={{ duration: 0.5 }}
+        />
       </div>
 
       <div className="relative z-10 flex h-full w-full flex-col justify-between p-4 sm:p-6 md:p-12 lg:p-20">
