@@ -122,17 +122,21 @@ export default function HeroSection() {
 
   return (
     <section ref={containerRef} className="relative min-h-screen md:h-screen w-full overflow-y-auto md:overflow-hidden bg-black">
-      <motion.div style={{ y, scale, opacity }} className="absolute inset-0 z-0 hidden md:block">
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="absolute inset-0 w-full h-full object-cover opacity-70"
-        >
-          <source src="/hero-video.webm" type="video/webm" />
-          <source src="/hero-video.mp4" type="video/mp4" />
-        </video>
+       <motion.div style={{ y, scale, opacity }} className="absolute inset-0 z-0 hidden md:block">
+         <video
+           autoPlay
+           loop
+           muted
+           playsInline
+           preload="auto"
+           disablePictureInPicture
+           disableRemotePlayback
+           className="absolute inset-0 w-full h-full object-cover opacity-80"
+           style={{ imageRendering: 'auto', WebkitBackfaceVisibility: 'hidden' }}
+         >
+           <source src="/hero-video.webm" type="video/webm" />
+           <source src="/hero-video.mp4" type="video/mp4" />
+         </video>
         <motion.div 
           className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent"
           animate={{ 
@@ -141,17 +145,21 @@ export default function HeroSection() {
           transition={{ duration: 0.5 }}
         />
       </motion.div>
-      <div className="absolute inset-0 z-0 md:hidden">
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="absolute inset-0 w-full h-full object-cover opacity-70"
-        >
-          <source src="/hero-video.webm" type="video/webm" />
-          <source src="/hero-video.mp4" type="video/mp4" />
-        </video>
+       <div className="absolute inset-0 z-0 md:hidden">
+         <video
+           autoPlay
+           loop
+           muted
+           playsInline
+           preload="auto"
+           disablePictureInPicture
+           disableRemotePlayback
+           className="absolute inset-0 w-full h-full object-cover opacity-80"
+           style={{ imageRendering: 'auto', WebkitBackfaceVisibility: 'hidden' }}
+         >
+           <source src="/hero-video.webm" type="video/webm" />
+           <source src="/hero-video.mp4" type="video/mp4" />
+         </video>
         <motion.div 
           className="absolute inset-0"
           animate={{ 

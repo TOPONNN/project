@@ -779,15 +779,15 @@ export default function LyricsQuizGame() {
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-[#46178F] to-[#1D0939] p-3 font-sans">
       {/* Hidden YouTube audio player for TJ songs */}
-      {youtubeVideoId && (
-        <iframe
-          key={youtubeVideoId}
-          src={`https://www.youtube.com/embed/${youtubeVideoId}?autoplay=1&start=30&controls=0&showinfo=0&rel=0&modestbranding=1`}
-          allow="autoplay"
-          className="absolute w-1 h-1 opacity-0 pointer-events-none"
-          title="quiz-audio"
-        />
-      )}
+       {youtubeVideoId && (
+         <iframe
+           key={youtubeVideoId}
+           src={`https://www.youtube-nocookie.com/embed/${youtubeVideoId}?autoplay=1&start=30&controls=0&showinfo=0&rel=0&modestbranding=1&playsinline=1&vq=hd2160`}
+           allow="autoplay"
+           className="absolute w-1 h-1 opacity-0 pointer-events-none"
+           title="quiz-audio"
+         />
+       )}
       <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
 
       <div className="relative z-10 flex items-center justify-between h-auto sm:h-24 py-2 px-3 sm:px-8 border-b border-white/10">
