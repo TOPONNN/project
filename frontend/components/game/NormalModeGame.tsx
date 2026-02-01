@@ -545,12 +545,12 @@ export default function NormalModeGame() {
                <div className="w-px h-8 sm:h-10 md:h-12 bg-white/20" />
                <div className="px-4 py-2 sm:px-6 sm:py-3 md:px-8 md:py-4 flex flex-col items-center min-w-[80px] sm:min-w-[100px] md:min-w-[120px]">
                   <span className="text-yellow-400 text-xs sm:text-sm font-bold mb-1">작사</span>
-                  <span className="text-white font-bold text-base sm:text-lg md:text-xl line-clamp-1 max-w-[150px]">{currentSong.lyricist || currentSong.artist}</span>
-                </div>
-                <div className="w-px h-8 sm:h-10 md:h-12 bg-white/20" />
-                <div className="px-4 py-2 sm:px-6 sm:py-3 md:px-8 md:py-4 flex flex-col items-center min-w-[80px] sm:min-w-[100px] md:min-w-[120px]">
-                  <span className="text-yellow-400 text-xs sm:text-sm font-bold mb-1">작곡</span>
-                  <span className="text-white font-bold text-base sm:text-lg md:text-xl line-clamp-1 max-w-[150px]">{currentSong.composer || currentSong.artist}</span>
+                   <span className="text-white font-bold text-sm sm:text-lg md:text-xl text-center whitespace-nowrap">{currentSong.lyricist || currentSong.artist}</span>
+                 </div>
+                 <div className="w-px h-8 sm:h-10 md:h-12 bg-white/20" />
+                 <div className="px-4 py-2 sm:px-6 sm:py-3 md:px-8 md:py-4 flex flex-col items-center min-w-[80px] sm:min-w-[100px] md:min-w-[120px]">
+                   <span className="text-yellow-400 text-xs sm:text-sm font-bold mb-1">작곡</span>
+                   <span className="text-white font-bold text-sm sm:text-lg md:text-xl text-center whitespace-nowrap">{currentSong.composer || currentSong.artist}</span>
                 </div>
             </div>
 

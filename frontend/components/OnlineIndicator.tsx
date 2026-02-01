@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Users, X } from "lucide-react";
+import { io, Socket } from "socket.io-client";
 
 interface OnlineUser {
   nickname: string;
@@ -31,78 +32,33 @@ export default function OnlineIndicator() {
 
   useEffect(() => {
     setMounted(true);
-    
-    // 1. Initialize Visitor ID
-    let visitorId = localStorage.getItem("visitorId");
-    if (!visitorId) {
-      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-        visitorId = crypto.randomUUID();
-      } else {
-        // Fallback for older browsers
-        visitorId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-          const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-          return v.toString(16);
-        });
-      }
-      localStorage.setItem("visitorId", visitorId);
-    }
 
-    const sendHeartbeat = async () => {
+    const socket: Socket = io({
+      transports: ["websocket", "polling"],
+    });
+
+    socket.on("connect", () => {
+      const userStr = localStorage.getItem("user");
+      let user = null;
       try {
-        const token = localStorage.getItem("token");
-        const userStr = localStorage.getItem("user");
-        let user = null;
-        try {
-          user = userStr ? JSON.parse(userStr) : null;
-        } catch {
-          // ignore invalid json
-        }
-
-        const payload = {
-          visitorId,
-          nickname: user?.name || "게스트",
-          profileImage: user?.profileImage || null,
-          currentPage: window.location.pathname
-        };
-
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json"
-        };
-        if (token) {
-          headers["Authorization"] = `Bearer ${token}`;
-        }
-
-        await fetch('/api/online/heartbeat', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload)
-        });
+        user = userStr ? JSON.parse(userStr) : null;
       } catch {
-        // Silent fail
+        // ignore invalid json
       }
-    };
 
-    const fetchOnline = async () => {
-      try {
-        const res = await fetch('/api/online');
-        const data = await res.json();
-        if (data.success) {
-          setOnlineData(data.data);
-        }
-      } catch {
-        // Silent fail
-      }
-    };
+      socket.emit("presence:join", {
+        nickname: user?.name || "게스트",
+        profileImage: user?.profileImage || null,
+        currentPage: window.location.pathname,
+      });
+    });
 
-    sendHeartbeat();
-    fetchOnline();
-
-    const heartbeatInterval = setInterval(sendHeartbeat, 10000);
-    const fetchInterval = setInterval(fetchOnline, 5000);
+    socket.on("presence:update", (data: OnlineData) => {
+      setOnlineData(data);
+    });
 
     return () => {
-      clearInterval(heartbeatInterval);
-      clearInterval(fetchInterval);
+      socket.disconnect();
     };
   }, []);
 

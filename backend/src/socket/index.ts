@@ -22,6 +22,8 @@ interface StartGameData {
   songId: string;
 }
 
+const onlineUsers = new Map<string, { nickname: string; profileImage: string | null; currentPage: string; connectedAt: number }>();
+
 export function initializeSocket(httpServer: HttpServer): Server {
   const io = new Server(httpServer, {
     cors: {
@@ -40,10 +42,33 @@ export function initializeSocket(httpServer: HttpServer): Server {
 
   redisPubSub.setSocketServer(io);
 
-   io.on("connection", (socket: Socket) => {
-     console.log(`Client connected: ${socket.id}`);
+  const broadcastPresence = () => {
+    const users = Array.from(onlineUsers.values());
+    io.emit("presence:update", { count: users.length, users });
+  };
 
-    socket.on("room:join", async (data: JoinRoomData) => {
+    io.on("connection", (socket: Socket) => {
+      console.log(`Client connected: ${socket.id}`);
+
+      socket.on("presence:join", (data: { nickname?: string; profileImage?: string | null; currentPage?: string }) => {
+        onlineUsers.set(socket.id, {
+          nickname: data.nickname || "게스트",
+          profileImage: data.profileImage || null,
+          currentPage: data.currentPage || "/",
+          connectedAt: Date.now(),
+        });
+        broadcastPresence();
+      });
+
+      socket.on("presence:page", (data: { currentPage: string }) => {
+        const user = onlineUsers.get(socket.id);
+        if (user) {
+          user.currentPage = data.currentPage;
+          broadcastPresence();
+        }
+      });
+
+     socket.on("room:join", async (data: JoinRoomData) => {
       try {
         const room = await roomService.getRoomByCode(data.code);
         if (!room) {
@@ -218,15 +243,17 @@ export function initializeSocket(httpServer: HttpServer): Server {
     perfectScoreHandler.registerEvents(socket);
     lyricsQuizHandler.registerEvents(socket);
 
-     socket.on("disconnect", async () => {
-       const { roomCode, participantId } = socket.data;
-       if (roomCode && participantId) {
-         await roomService.leaveRoom(roomCode, participantId);
-         io.to(roomCode).emit("room:participant:left", participantId);
-         await redisPubSub.publishParticipantLeft(roomCode, participantId);
-       }
-       console.log(`Client disconnected: ${socket.id}`);
-    });
+      socket.on("disconnect", async () => {
+        const { roomCode, participantId } = socket.data;
+        if (roomCode && participantId) {
+          await roomService.leaveRoom(roomCode, participantId);
+          io.to(roomCode).emit("room:participant:left", participantId);
+          await redisPubSub.publishParticipantLeft(roomCode, participantId);
+        }
+        onlineUsers.delete(socket.id);
+        broadcastPresence();
+        console.log(`Client disconnected: ${socket.id}`);
+     });
   });
 
   return io;

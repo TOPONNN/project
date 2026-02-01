@@ -657,7 +657,7 @@ export default function RoomPage() {
 
       {/* 상단 헤더 */}
       <header className="relative z-20 flex items-center justify-between px-4 py-3 md:p-6 bg-black/30 backdrop-blur-md border-b border-white/5">
-        <Link href="/lobby" className="flex items-center gap-2 text-white/60 hover:text-white transition-colors shrink-0">
+        <Link href={`/lobby?mode=${room.gameMode}`} className="flex items-center gap-2 text-white/60 hover:text-white transition-colors shrink-0">
           <div className="p-2 rounded-full bg-white/5 hover:bg-white/10 transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </div>
@@ -706,7 +706,7 @@ export default function RoomPage() {
             <div className="mb-6">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">문제 수</p>
               <div className="flex gap-3 justify-center">
-                {[30, 50, 100].map((num) => (
+                {[10, 30, 50, 100].map((num) => (
                   <button
                     key={num}
                     onClick={() => setQuizCount(num)}
