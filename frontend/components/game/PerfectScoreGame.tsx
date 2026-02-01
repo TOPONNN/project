@@ -14,7 +14,6 @@ interface LyricsWord {
   pitch?: number;
   note?: string;
   midi?: number;
-  voiced?: number;
 }
 
 interface LyricsLine {
@@ -460,7 +459,7 @@ export default function PerfectScoreGame() {
       }
 
       const wordDuration = word.endTime - word.startTime;
-      const hasVibrato = (word.voiced ?? 0) > 0.7 && wordDuration > 0.5;
+      const hasVibrato = wordDuration > 0.8;
       const judgment: JudgmentLabel = result === "PERFECT"
         ? "PERFECT"
         : result === "GREAT"
@@ -704,7 +703,7 @@ export default function PerfectScoreGame() {
         ctx.restore();
 
         const wordDuration = word.endTime - word.startTime;
-        const hasVibrato = (word.voiced ?? 0) > 0.7 && wordDuration > 0.5;
+        const hasVibrato = wordDuration > 0.8;
         const prevWord = words[index - 1];
         const interval = typeof prevWord?.midi === "number" ? word.midi - prevWord.midi : 0;
         const hasRise = interval >= 3;

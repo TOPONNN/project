@@ -398,7 +398,7 @@ export default function RoomPage() {
              pitch: w.pitch,
              note: w.note,
              midi: w.midi,
-             voiced: w.voiced,
+             
            })),
         })) || [],
       }));
