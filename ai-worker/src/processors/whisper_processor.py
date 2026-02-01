@@ -327,206 +327,6 @@ class LyricsProcessor:
                     word["midi"] = 0
             return segments
 
-    def _add_vad_to_words(self, vocals_path: str, segments: List[Dict]) -> List[Dict]:
-        """Add voice activity detection using Silero-VAD neural network."""
-        try:
-            print(f"[VAD] Loading Silero-VAD model...")
-            from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
-
-            vad_model = load_silero_vad()
-            wav = read_audio(vocals_path, sampling_rate=16000)
-
-            # Get speech timestamps (in samples at 16kHz)
-            speech_timestamps = get_speech_timestamps(
-                wav, vad_model,
-                sampling_rate=16000,
-                threshold=0.3,          # Lower threshold to catch softer singing
-                min_speech_duration_ms=100,
-                min_silence_duration_ms=50,
-            )
-
-            # Convert sample indices to seconds
-            speech_ranges = [(ts['start'] / 16000.0, ts['end'] / 16000.0)
-                             for ts in speech_timestamps]
-
-            print(f"[VAD] Detected {len(speech_ranges)} speech segments")
-
-            total_words = 0
-            vad_added = 0
-
-            for segment in segments:
-                for word in segment.get("words", []):
-                    total_words += 1
-                    start = word.get("start_time", 0)
-                    end = word.get("end_time", 0)
-                    word_dur = end - start
-
-                    if word_dur <= 0:
-                        word["voiced"] = 0.0
-                        continue
-
-                    # Calculate overlap with speech segments
-                    speech_overlap = 0.0
-                    for s_start, s_end in speech_ranges:
-                        overlap_start = max(start, s_start)
-                        overlap_end = min(end, s_end)
-                        if overlap_end > overlap_start:
-                            speech_overlap += (overlap_end - overlap_start)
-
-                    voiced = min(1.0, speech_overlap / word_dur)
-                    word["voiced"] = round(voiced, 3)
-                    vad_added += 1
-
-            print(f"[VAD] Added Silero-VAD values to {vad_added}/{total_words} words")
-
-            # Cleanup
-            del vad_model
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-            return segments
-
-        except Exception as e:
-            print(f"[VAD] Silero-VAD failed: {e}")
-            # Fallback: set default
-            for segment in segments:
-                for word in segment.get("words", []):
-                    word["voiced"] = 0.5
-            return segments
-
-    def _get_speech_segments(self, vocals_path: str) -> List[tuple]:
-        """Get speech segments using Silero-VAD (start/end in seconds)."""
-        try:
-            from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
-
-            vad_model = load_silero_vad()
-            wav = read_audio(vocals_path, sampling_rate=16000)
-
-            speech_timestamps = get_speech_timestamps(
-                wav, vad_model,
-                sampling_rate=16000,
-                threshold=0.3,
-                min_speech_duration_ms=100,
-                min_silence_duration_ms=50,
-            )
-
-            speech_ranges = [(ts['start'] / 16000.0, ts['end'] / 16000.0)
-                             for ts in speech_timestamps]
-
-            del vad_model
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-            return speech_ranges
-        except Exception as e:
-            print(f"[VAD] Failed to get speech segments: {e}")
-            return []
-
-    # ------------------------------------------------------------------
-    # NEW: WhisperX pipeline helpers
-    # ------------------------------------------------------------------
-
-    def _build_lines_from_whisperx(self, segments: List[Dict]) -> List[Dict]:
-        """Convert WhisperX segments to our output format."""
-        lines = []
-        for seg in segments:
-            words = []
-            for w in seg.get("words", []):
-                if "start" in w and "end" in w:
-                    words.append({
-                        "start_time": round(w["start"], 3),
-                        "end_time": round(w["end"], 3),
-                        "text": w.get("word", w.get("text", "")),
-                    })
-            if not words and seg.get("text", "").strip():
-                # Fallback: segment without word timing
-                if "start" in seg and "end" in seg:
-                    words = [{
-                        "start_time": round(seg["start"], 3),
-                        "end_time": round(seg["end"], 3),
-                        "text": seg["text"].strip(),
-                    }]
-            if words:
-                words.sort(key=lambda w: w["start_time"])
-                lines.append({
-                    "start_time": words[0]["start_time"],
-                    "end_time": max(w["end_time"] for w in words),
-                    "text": " ".join(w["text"] for w in words),
-                    "words": words,
-                })
-        return lines
-
-    def _text_similarity(self, text_a: str, text_b: str) -> float:
-        """Jaccard word overlap similarity between two strings."""
-        words_a = set(re.sub(r'[^\w\s]', '', text_a.lower()).split())
-        words_b = set(re.sub(r'[^\w\s]', '', text_b.lower()).split())
-        if not words_a or not words_b:
-            return 0.0
-        intersection = words_a & words_b
-        union = words_a | words_b
-        return len(intersection) / len(union) if union else 0.0
-
-    def _merge_with_api_lyrics(self, whisperx_lines: List[Dict], api_lyrics: str) -> List[Dict]:
-        """Map clean API text onto WhisperX-timed lines.
-
-        Replaces WhisperX transcription text with clean API text while
-        keeping all WhisperX timing information intact.
-        """
-        api_lines = [line.strip() for line in api_lyrics.split("\n") if line.strip()]
-        if not api_lines:
-            return whisperx_lines
-
-        # Track which API lines have been used
-        used_api = [False] * len(api_lines)
-
-        for wline in whisperx_lines:
-            best_score = 0.0
-            best_idx = -1
-
-            for i, api_line in enumerate(api_lines):
-                if used_api[i]:
-                    continue
-                score = self._text_similarity(wline["text"], api_line)
-                if score > best_score:
-                    best_score = score
-                    best_idx = i
-
-            if best_idx >= 0 and best_score >= 0.3:
-                used_api[best_idx] = True
-                api_line_text = api_lines[best_idx]
-
-                # Replace line-level text
-                wline["text"] = api_line_text
-
-                # Map API words to WhisperX word timing (positional)
-                api_words = api_line_text.split()
-                wx_words = wline.get("words", [])
-
-                if api_words and wx_words:
-                    if len(api_words) == len(wx_words):
-                        # 1:1 mapping — just replace text
-                        for aw, ww in zip(api_words, wx_words):
-                            ww["text"] = aw
-                    else:
-                        # Distribute timing proportionally
-                        line_start = wx_words[0]["start_time"]
-                        line_end = max(w["end_time"] for w in wx_words)
-                        total_duration = line_end - line_start
-                        if total_duration <= 0:
-                            total_duration = 0.5
-
-                        n = len(api_words)
-                        word_dur = total_duration / n
-                        new_words = []
-                        for j, aw in enumerate(api_words):
-                            new_words.append({
-                                "start_time": round(line_start + j * word_dur, 3),
-                                "end_time": round(line_start + (j + 1) * word_dur, 3),
-                                "text": aw,
-                            })
-                        wline["words"] = new_words
-
-        return whisperx_lines
 
     def _get_whisperx_timing(self, audio_path: str, language: Optional[str] = None) -> Optional[List[Dict]]:
         """Run WhisperX transcription + alignment to get timing info only.
@@ -854,7 +654,22 @@ class LyricsProcessor:
         if mfa_processor.is_available() and language in mfa_processor.LANGUAGE_MODELS:
             try:
                 raw_lines = [line.strip() for line in lyrics_text.split("\n") if line.strip()]
-                speech_segments = self._get_speech_segments(audio_path)
+                # Inline speech segment detection (Silero-VAD)
+                try:
+                    from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
+                    vad_model = load_silero_vad()
+                    wav = read_audio(audio_path, sampling_rate=16000)
+                    speech_ts = get_speech_timestamps(
+                        wav, vad_model, sampling_rate=16000,
+                        threshold=0.3, min_speech_duration_ms=100, min_silence_duration_ms=50,
+                    )
+                    speech_segments = [(ts['start'] / 16000.0, ts['end'] / 16000.0) for ts in speech_ts]
+                    del vad_model
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except Exception as e:
+                    print(f"[MFA-only] VAD failed: {e}")
+                    speech_segments = []
 
                 if not raw_lines or not speech_segments:
                     raise RuntimeError("No lines or speech segments for chunked alignment")
@@ -1040,11 +855,16 @@ class LyricsProcessor:
         lyrics_text = self._fetch_lyrics_from_api(title, artist)
 
         if not lyrics_text:
-            print("[Pipeline] No API lyrics — falling back to WhisperX-only pipeline")
-            return self._whisperx_only_pipeline(
-                audio_path, song_id, language, folder_name,
-                title, artist, progress_callback, duration
-            )
+            print("[Pipeline] No API lyrics available — cannot process without lyrics")
+            if progress_callback:
+                progress_callback(100)
+            return {
+                "lyrics_url": "",
+                "lyrics": [],
+                "full_text": "",
+                "language": language or "ko",
+                "duration": duration,
+            }
 
         detected_language = self._detect_language(lyrics_text, language, title, artist)
         print(f"[API Lyrics] Language: {detected_language}, {len(lyrics_text)} chars")
@@ -1113,99 +933,6 @@ class LyricsProcessor:
         print("=" * 60)
 
         lyrics_lines = self._add_pitch_to_words(audio_path, lyrics_lines)
-
-        # ==============================================================
-        # Stage 8: VAD analysis (Silero-VAD)
-        # ==============================================================
-        print("=" * 60)
-        print("[Stage 8: VAD] Detecting voice activity (Silero-VAD)...")
-        print("=" * 60)
-
-        lyrics_lines = self._add_vad_to_words(audio_path, lyrics_lines)
-
-        if progress_callback:
-            progress_callback(90)
-
-        gc.collect()
-        if self.device == "cuda":
-            torch.cuda.empty_cache()
-
-        # Save and upload
-        output_dir = os.path.join(TEMP_DIR, song_id)
-        os.makedirs(output_dir, exist_ok=True)
-
-        lyrics_path = os.path.join(output_dir, "lyrics.json")
-        with open(lyrics_path, "w", encoding="utf-8") as f:
-            json.dump(lyrics_lines, f, ensure_ascii=False, indent=2)
-
-        s3_key = f"songs/{folder_name}/lyrics.json"
-        lyrics_url = s3_service.upload_file(lyrics_path, s3_key)
-
-        os.remove(lyrics_path)
-        try:
-            os.rmdir(output_dir)
-        except OSError:
-            pass
-
-        if progress_callback:
-            progress_callback(100)
-
-        full_text = " ".join([line["text"] for line in lyrics_lines])
-
-        return {
-            "lyrics_url": lyrics_url,
-            "lyrics": lyrics_lines,
-            "full_text": full_text,
-            "language": detected_language,
-            "duration": duration,
-        }
-
-    # ------------------------------------------------------------------
-    # Fallback: WhisperX-only pipeline when API lyrics unavailable
-    # ------------------------------------------------------------------
-
-    def _whisperx_only_pipeline(self, audio_path: str, song_id: str,
-                                language: Optional[str], folder_name: str,
-                                title: Optional[str], artist: Optional[str],
-                                progress_callback: Optional[Callable[[int], None]],
-                                duration: float) -> Dict:
-        """Fallback pipeline when API lyrics unavailable: WhisperX provides both text and timing."""
-        print("[WhisperX-only] Running WhisperX-only pipeline (no API lyrics)...")
-
-        whisperx_segments = self._get_whisperx_timing(audio_path, language)
-
-        if not whisperx_segments:
-            print("[WhisperX-only] WhisperX also failed — returning empty result")
-            return {
-                "lyrics_url": "",
-                "lyrics": [],
-                "full_text": "",
-                "language": language or "en",
-                "duration": duration,
-            }
-
-        if progress_callback:
-            progress_callback(50)
-
-        # Build lines from WhisperX (text + timing from transcription)
-        lyrics_lines = self._build_lines_from_whisperx(whisperx_segments)
-        print(f"[WhisperX-only] {len(lyrics_lines)} lines from transcription")
-
-        # Detect language from WhisperX text
-        full_text = " ".join(l["text"] for l in lyrics_lines)
-        detected_language = self._detect_language(full_text, language, title, artist)
-
-        # MFA refinement — DISABLED (same reason as main pipeline)
-        print("[WhisperX-only MFA] Skipped — WhisperX timing is sufficient")
-
-        if progress_callback:
-            progress_callback(60)
-
-        # Clean, Energy, Pitch, VAD
-        lyrics_lines = self._clean_lyrics(lyrics_lines, detected_language)
-        lyrics_lines = self._add_energy_to_words(audio_path, lyrics_lines)
-        lyrics_lines = self._add_pitch_to_words(audio_path, lyrics_lines)
-        lyrics_lines = self._add_vad_to_words(audio_path, lyrics_lines)
 
         if progress_callback:
             progress_callback(90)

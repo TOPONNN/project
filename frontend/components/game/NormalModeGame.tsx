@@ -15,7 +15,6 @@ interface LyricsWord {
   pitch?: number;    // Average frequency in Hz (e.g., 440.0)
   note?: string;     // Musical note name (e.g., "A4", "C#5")
   midi?: number;     // MIDI note number (e.g., 69)
-  voiced?: number;   // Voice activity confidence 0.0-1.0
   energyCurve?: number[];  // NEW: 4-8 values representing energy contour within word
 }
 
@@ -379,44 +378,37 @@ export default function NormalModeGame() {
     if (localTime < wordStart) return 0;
     if (localTime >= wordEnd) return 100;
     
-    // Raw linear progress 0-1
-    const t = (localTime - wordStart) / wordDuration;
-    
-    // Energy affects fill speed: high energy = faster start, low = slower
-    const energy = word.energy ?? 0.5;
-    const voiced = word.voiced ?? 1.0;
-    
-    // Use energy curve if available for intra-word modulation
-    let effectiveEnergy = energy;
-    const curve = word.energyCurve || (word as any).energy_curve;
-    if (curve && curve.length > 1) {
-      // Sample the energy curve at current position within the word
-      const curveIndex = Math.min(
-        curve.length - 1,
-        Math.floor(t * curve.length)
-      );
-      effectiveEnergy = curve[curveIndex];
-    }
-    
-    // Sigmoid-based fill: strong vocals push fill ahead, weak vocals lag behind
-    // k controls steepness: higher energy = steeper sigmoid = faster middle fill
-    const k = 4 + effectiveEnergy * 8; // Range: 4 (soft) to 12 (strong)
-    const sigmoid = 1 / (1 + Math.exp(-k * (t - 0.5)));
-    // Normalize sigmoid to 0-1 range
-    const sigMin = 1 / (1 + Math.exp(-k * -0.5));
-    const sigMax = 1 / (1 + Math.exp(-k * 0.5));
-    const normalizedSigmoid = (sigmoid - sigMin) / (sigMax - sigMin);
-    
-    // Voiced modulation: unvoiced sections slow down the fill
-    const voicedFactor = 0.3 + voiced * 0.7; // Range: 0.3 to 1.0
-    
-    // Blend: sigmoid curve modulated by voiced factor
-    const progress = normalizedSigmoid * voicedFactor * 100;
-    
-    // If voiced is very low, cap progress to prevent it from reaching 100% too early
-    const maxProgress = voiced < 0.3 ? 70 : 100;
-    
-    return Math.min(maxProgress, Math.max(0, progress));
+     // Raw linear progress 0-1
+     const t = (localTime - wordStart) / wordDuration;
+     
+     // Energy affects fill speed: high energy = faster start, low = slower
+     const energy = word.energy ?? 0.5;
+     
+     // Use energy curve if available for intra-word modulation
+     let effectiveEnergy = energy;
+     const curve = word.energyCurve || (word as any).energy_curve;
+     if (curve && curve.length > 1) {
+       // Sample the energy curve at current position within the word
+       const curveIndex = Math.min(
+         curve.length - 1,
+         Math.floor(t * curve.length)
+       );
+       effectiveEnergy = curve[curveIndex];
+     }
+     
+     // Sigmoid-based fill: strong vocals push fill ahead, weak vocals lag behind
+     // k controls steepness: higher energy = steeper sigmoid = faster middle fill
+     const k = 4 + effectiveEnergy * 8; // Range: 4 (soft) to 12 (strong)
+     const sigmoid = 1 / (1 + Math.exp(-k * (t - 0.5)));
+     // Normalize sigmoid to 0-1 range
+     const sigMin = 1 / (1 + Math.exp(-k * -0.5));
+     const sigMax = 1 / (1 + Math.exp(-k * 0.5));
+     const normalizedSigmoid = (sigmoid - sigMin) / (sigMax - sigMin);
+     
+     // Sigmoid curve modulated by energy only
+     const progress = normalizedSigmoid * 100;
+     
+     return Math.min(100, Math.max(0, progress));
   }, [localTime]);
 
   // 라인 전체 진행률 (단어가 없을 때 사용)
