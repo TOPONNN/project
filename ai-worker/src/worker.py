@@ -47,18 +47,6 @@ class AIWorker:
                 "--remote-components", "ejs:github",
             ]
             
-            cookies_paths = [
-                os.path.expanduser("~/youtube_cookies.txt"),
-                os.path.expanduser("~/ai-worker/cookies/youtube.txt"),
-                os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "cookies", "youtube.txt"),
-                "/app/cookies/youtube.txt",
-            ]
-            for cookies_path in cookies_paths:
-                if os.path.exists(cookies_path):
-                    print(f"Using cookies from: {cookies_path}")
-                    cmd.extend(["--cookies", cookies_path])
-                    break
-            
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
             
             if result.returncode != 0:

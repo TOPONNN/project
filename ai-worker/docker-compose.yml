@@ -16,8 +16,6 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    volumes:
-      - ./cookies:/app/cookies
     environment:
       - RABBITMQ_HOST=${RABBITMQ_HOST:-***REDACTED_SERVER_IP***}
       - RABBITMQ_PORT=${RABBITMQ_PORT:-5672}
