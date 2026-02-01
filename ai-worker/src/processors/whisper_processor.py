@@ -5,13 +5,7 @@ import gc
 import uuid
 import torch
 
-# --- PyTorch 2.8 compatibility patch ---
-# WhisperX/pyannote uses omegaconf classes in saved models which
-# torch.load(weights_only=True) rejects in PyTorch 2.6+.
-# Override the internal default so ALL torch.load calls (including those
-# inside pyannote/whisperx that capture their own reference) use
-# weights_only=False unless the caller explicitly passes weights_only=True.
-torch.serialization._default_to_weights_only = lambda *_args, **_kwargs: False
+# WhisperX uses Silero VAD (not Pyannote) to avoid torch.load compatibility issues
 
 import numpy as np
 import librosa
@@ -41,7 +35,8 @@ class LyricsProcessor:
             print("[WhisperX] Loading large-v3 model...")
             compute = "float16" if self.device == "cuda" else "int8"
             self._whisperx_model = whisperx.load_model(
-                "large-v3", self.device, compute_type=compute
+                "large-v3", self.device, compute_type=compute,
+                vad_method="silero"
             )
             print("[WhisperX] Model loaded")
         return self._whisperx_model

@@ -120,7 +120,7 @@ class AIWorker:
                 )
                 results["separation"] = separation_result
 
-                vocals_path = os.path.join(TEMP_DIR, song_id, "vocals.wav")
+                vocals_path = os.path.join(TEMP_DIR, song_id, "vocals.flac")
                 if os.path.exists(vocals_path):
                     local_audio_path = vocals_path
 
@@ -129,9 +129,9 @@ class AIWorker:
                 vocals_path = results.get("separation", {}).get("vocals_url")
                 audio_for_lyrics = local_audio_path
 
-                if vocals_path and "vocals.wav" in vocals_path:
-                    temp_vocals = os.path.join(TEMP_DIR, f"{song_id}_vocals.wav")
-                    s3_service.download_file(f"songs/{folder_name}/vocals.wav", temp_vocals)
+                if vocals_path and "vocals.flac" in vocals_path:
+                    temp_vocals = os.path.join(TEMP_DIR, f"{song_id}_vocals.flac")
+                    s3_service.download_file(f"songs/{folder_name}/vocals.flac", temp_vocals)
                     audio_for_lyrics = temp_vocals
 
                 lyrics_result = whisper_processor.extract_lyrics(
@@ -150,10 +150,10 @@ class AIWorker:
                 vocals_path = results.get("separation", {}).get("vocals_url")
                 audio_for_pitch = local_audio_path
 
-                if vocals_path and "vocals.wav" in vocals_path:
-                    temp_vocals = os.path.join(TEMP_DIR, f"{song_id}_vocals.wav")
+                if vocals_path and "vocals.flac" in vocals_path:
+                    temp_vocals = os.path.join(TEMP_DIR, f"{song_id}_vocals.flac")
                     if not os.path.exists(temp_vocals):
-                        s3_service.download_file(f"songs/{folder_name}/vocals.wav", temp_vocals)
+                        s3_service.download_file(f"songs/{folder_name}/vocals.flac", temp_vocals)
                     audio_for_pitch = temp_vocals
 
                 pitch_result = crepe_processor.analyze_pitch(

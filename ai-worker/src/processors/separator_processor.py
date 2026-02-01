@@ -38,7 +38,7 @@ class SeparatorProcessor:
         success = False
 
         try:
-            separator: Any = Separator(output_dir=output_dir, output_format="WAV")
+            separator: Any = Separator(output_dir=output_dir, output_format="FLAC")
             separator.load_model(self.model_name)  # type: ignore
             output_files = separator.separate(audio_path)  # type: ignore
 
@@ -57,7 +57,7 @@ class SeparatorProcessor:
                 else:
                     continue
 
-                s3_key = f"songs/{folder_name}/{source_key}.wav"
+                s3_key = f"songs/{folder_name}/{source_key}.flac"
                 url = s3_service.upload_file(output_file, s3_key)
                 results[source_key] = url
 
