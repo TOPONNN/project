@@ -8,7 +8,7 @@ from src.config import TEMP_DIR  # type: ignore
 from src.services.s3_service import s3_service  # type: ignore
 
 
-MODEL_NAME = "model_bs_roformer_ep_317_sdr_12.9744.ckpt"
+MODEL_NAME = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
 
 
 class DemucsProcessor:

@@ -18,6 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     bzip2 \
     ca-certificates \
+    gcc \
+    g++ \
+    libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Miniforge (conda-forge only, no Anaconda ToS issues)
@@ -87,7 +90,7 @@ ENV PYTHONPATH="/app/venv/lib/python3.12/site-packages"
 ENV LD_LIBRARY_PATH="/app/venv/lib/python3.12/site-packages/nvidia/cudnn/lib:/app/venv/lib/python3.12/site-packages/nvidia/cublas/lib:/app/venv/lib/python3.12/site-packages/nvidia/cufft/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
 # Pre-download BS Roformer model so it's baked into the image
-RUN python -c "from audio_separator.separator import Separator; s = Separator(); s.load_model('model_bs_roformer_ep_317_sdr_12.9744.ckpt')"
+RUN python -c "from audio_separator.separator import Separator; s = Separator(); s.load_model('model_bs_roformer_ep_317_sdr_12.9755.ckpt')"
 
 COPY src/ ./src/
 

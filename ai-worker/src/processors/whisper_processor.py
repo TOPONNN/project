@@ -132,7 +132,6 @@ class LyricsProcessor:
         youtube_regex = re.compile('|'.join(youtube_patterns), re.IGNORECASE)
         
         dialogue_patterns = [
-            r'^(안녕|여보세요|네|아|어|음|응|헐|뭐|왜|어디|언제|누가)',
             r'^(hello|hey|hi|um|uh|yeah|okay|ok|what|why|where)\b',
             r'^\[.*\]$',
             r'^\(.*\)$',
@@ -157,7 +156,7 @@ class LyricsProcessor:
                 print(f"[Clean] Filtered YouTube pattern: {text[:50]}")
                 continue
             
-            if len(text) < 10 and dialogue_regex.match(text):
+            if len(text) < 5 and dialogue_regex.match(text):
                 print(f"[Clean] Filtered dialogue: {text}")
                 continue
                 
@@ -600,24 +599,40 @@ class LyricsProcessor:
             return [{"start_time": 0, "end_time": 0, "text": line, "words": []}
                     for line in api_lines]
 
-        result = []
-        used_wx = set()
+        WINDOW_SIZE = 15
+        SIMILARITY_THRESHOLD = 0.25
+        wx_search_start = 0
+        matched_results = []
 
-        for api_line in api_lines:
-            # Find best matching WhisperX line by text similarity
+        for api_idx, api_line in enumerate(api_lines):
             best_idx = -1
             best_score = 0.0
-            for i, wx_line in enumerate(wx_lines):
-                if i in used_wx:
-                    continue
-                score = self._text_similarity(api_line, wx_line["text"])
+
+            search_end = min(wx_search_start + WINDOW_SIZE, len(wx_lines))
+            for i in range(wx_search_start, search_end):
+                score = self._text_similarity(api_line, wx_lines[i]["text"])
                 if score > best_score:
                     best_score = score
                     best_idx = i
 
-            if best_idx >= 0 and best_score >= 0.3:
-                used_wx.add(best_idx)
-                wx_line = wx_lines[best_idx]
+            if best_idx >= 0 and best_score >= SIMILARITY_THRESHOLD:
+                matched_results.append((api_idx, api_line, wx_lines[best_idx]))
+                wx_search_start = best_idx + 1
+            else:
+                matched_results.append((api_idx, api_line, None))
+
+        result = []
+        next_match_indices = [None] * len(matched_results)
+        next_idx = None
+        for i in range(len(matched_results) - 1, -1, -1):
+            if matched_results[i][2] is not None:
+                next_idx = i
+            next_match_indices[i] = next_idx
+
+        prev_match_idx = None
+        for idx, (_, api_line, wx_line) in enumerate(matched_results):
+            if wx_line is not None:
+                prev_match_idx = idx
 
                 # Use API text + WhisperX timing
                 api_words = api_line.split()
@@ -657,7 +672,52 @@ class LyricsProcessor:
                     "text": api_line,
                     "words": mapped_words,
                 })
-            # else: skip unmatched API lines (section headers like [Verse 1] etc.)
+                continue
+
+            prev_line = matched_results[prev_match_idx][2] if prev_match_idx is not None else None
+            next_match_idx = next_match_indices[idx]
+            next_line = matched_results[next_match_idx][2] if next_match_idx is not None else None
+
+            if prev_line and next_line:
+                gap = next_match_idx - prev_match_idx
+                ratio = (idx - prev_match_idx) / gap if gap else 1.0
+                start_time = prev_line["start_time"] + (next_line["start_time"] - prev_line["start_time"]) * ratio
+                end_time = prev_line["end_time"] + (next_line["end_time"] - prev_line["end_time"]) * ratio
+            elif next_line and not prev_line:
+                gap = next_match_idx + 1
+                ratio = (idx + 1) / gap if gap else 1.0
+                start_time = (next_line["start_time"]) * ratio
+                end_time = (next_line["end_time"]) * ratio
+            elif prev_line and not next_line:
+                offset = idx - prev_match_idx
+                start_time = prev_line["end_time"] + 0.5 * offset
+                end_time = start_time + 0.5
+            else:
+                start_time = 0.0
+                end_time = 0.5
+
+            if end_time < start_time:
+                end_time = start_time + 0.5
+
+            api_words = api_line.split()
+            mapped_words = []
+            if api_words:
+                total_dur = max(end_time - start_time, 0.5)
+                n = len(api_words)
+                word_dur = total_dur / n
+                for j, aw in enumerate(api_words):
+                    mapped_words.append({
+                        "start_time": round(start_time + j * word_dur, 3),
+                        "end_time": round(start_time + (j + 1) * word_dur, 3),
+                        "text": aw,
+                    })
+
+            result.append({
+                "start_time": round(start_time, 3),
+                "end_time": round(end_time, 3),
+                "text": api_line,
+                "words": mapped_words,
+            })
 
         # Sort by timing
         result.sort(key=lambda l: l["start_time"])
@@ -907,34 +967,11 @@ class LyricsProcessor:
             progress_callback(55)
 
         # ==============================================================
-        # Stage 5: MFA Refinement
+        # Stage 5: MFA Refinement — DISABLED
         # ==============================================================
-        print("=" * 60)
-        print("[Stage 5: MFA] Refining word timing...")
-        print("=" * 60)
-
-        if whisperx_segments and mfa_processor.is_available() and detected_language in mfa_processor.LANGUAGE_MODELS:
-            try:
-                # Build clean text for MFA from our current lines
-                clean_text = " ".join(line["text"] for line in lyrics_lines)
-                clean_text = re.sub(r'\[.*?\]', '', clean_text)
-                clean_text = re.sub(r'\(.*?\)', '', clean_text)
-                clean_text = re.sub(r'[♪~]', '', clean_text)
-                clean_text = re.sub(r'\s+', ' ', clean_text).strip()
-
-                mfa_words = mfa_processor.align_lyrics(audio_path, clean_text, detected_language)
-                if mfa_words:
-                    print(f"[MFA] Got {len(mfa_words)} words — averaging with WhisperX")
-                    lyrics_lines = self._refine_with_mfa(lyrics_lines, mfa_words)
-                else:
-                    print("[MFA] No words returned — keeping current timing")
-            except Exception as e:
-                print(f"[MFA] Failed: {e} — keeping current timing")
-        else:
-            if not whisperx_segments:
-                print("[MFA] Already used MFA in mapping step — skipping")
-            else:
-                print(f"[MFA] Not available for '{detected_language}' — keeping WhisperX timing")
+        # Stage 5: MFA Refinement — DISABLED
+        # Single-pass MFA drifts on audio >60s and corrupts WhisperX timing
+        print("[Stage 5: MFA] Skipped — WhisperX timing is sufficient (single-pass MFA causes drift)")
 
         if progress_callback:
             progress_callback(60)
@@ -1042,21 +1079,8 @@ class LyricsProcessor:
         full_text = " ".join(l["text"] for l in lyrics_lines)
         detected_language = self._detect_language(full_text, language, title, artist)
 
-        # MFA refinement
-        if mfa_processor.is_available() and detected_language in mfa_processor.LANGUAGE_MODELS:
-            try:
-                clean_text = " ".join(line["text"] for line in lyrics_lines)
-                clean_text = re.sub(r'\[.*?\]', '', clean_text)
-                clean_text = re.sub(r'\(.*?\)', '', clean_text)
-                clean_text = re.sub(r'[♪~]', '', clean_text)
-                clean_text = re.sub(r'\s+', ' ', clean_text).strip()
-
-                mfa_words = mfa_processor.align_lyrics(audio_path, clean_text, detected_language)
-                if mfa_words:
-                    print(f"[WhisperX-only MFA] Got {len(mfa_words)} words — averaging")
-                    lyrics_lines = self._refine_with_mfa(lyrics_lines, mfa_words)
-            except Exception as e:
-                print(f"[WhisperX-only MFA] Failed: {e}")
+        # MFA refinement — DISABLED (same reason as main pipeline)
+        print("[WhisperX-only MFA] Skipped — WhisperX timing is sufficient")
 
         if progress_callback:
             progress_callback(60)

@@ -206,7 +206,10 @@ class AIWorker:
             }
             
             url = f"{BACKEND_API_URL}/api/songs/{song_id}/processing-callback"
-            response = requests.post(url, json=callback_data, timeout=30)
+            headers = {
+                "x-processing-secret": os.environ.get('PROCESSING_SECRET', '***REDACTED_PROCESSING_SECRET***')
+            }
+            response = requests.post(url, json=callback_data, headers=headers, timeout=30)
             
             if response.status_code == 200:
                 print(f"Callback sent successfully for song {song_id}")
