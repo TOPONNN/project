@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
-import { ChevronDown, Music, Target, MessageSquareText, Swords, Users } from "lucide-react";
+import { ChevronDown, Music, Target, MessageSquareText, Swords, Users, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import OnlineIndicator from "@/components/OnlineIndicator";
 
@@ -88,7 +88,7 @@ export default function HeroSection() {
   };
 
   const handleWheel = useCallback((e: WheelEvent) => {
-    if (hasExitedHero || window.scrollY > 10) return;
+    if (hasExitedHero || window.scrollY > 10 || window.innerWidth < 768) return;
     
     const isLastMode = activeMode === modes.length - 1;
     const isFirstMode = activeMode === 0;
@@ -121,7 +121,7 @@ export default function HeroSection() {
   const Icon = currentMode.icon;
 
   return (
-    <section ref={containerRef} className="relative h-screen w-full overflow-hidden bg-black">
+    <section ref={containerRef} className="relative min-h-screen md:h-screen w-full overflow-y-auto md:overflow-hidden bg-black">
       <motion.div style={{ y, scale, opacity }} className="absolute inset-0 z-0">
         <video
           autoPlay
@@ -149,7 +149,7 @@ export default function HeroSection() {
               initial={{ opacity: 0, x: -50 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.8 }}
-              className="text-5xl sm:text-7xl font-bold tracking-tighter text-white md:text-[10rem]"
+              className="text-6xl sm:text-7xl md:text-[10rem] font-bold tracking-tighter text-white"
             >
               KERO
             </motion.h1>
@@ -225,6 +225,27 @@ export default function HeroSection() {
               기능 둘러보기
             </motion.button>
           </motion.div>
+          {/* Mobile mode grid */}
+          <div className="grid grid-cols-2 gap-2.5 mt-8 md:hidden">
+            {modes.map((mode) => {
+              const ModeIcon = mode.icon;
+              return (
+                <Link key={mode.id} href={mode.href}>
+                  <motion.div
+                    className="flex items-center gap-3 p-3.5 rounded-xl bg-white/5 border border-white/10 active:scale-95 transition-transform"
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <ModeIcon className="w-5 h-5 shrink-0" style={{ color: mode.accent }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-white truncate">{mode.title}</p>
+                      <p className="text-[11px] text-gray-500 truncate">{mode.subtitle}</p>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-white/30 shrink-0" />
+                  </motion.div>
+                </Link>
+              );
+            })}
+          </div>
         </div>
 
         <div className="absolute right-8 top-1/2 -translate-y-1/2 hidden flex-col gap-8 md:flex">
@@ -259,10 +280,10 @@ export default function HeroSection() {
           transition={{ repeat: Infinity, duration: 2 }}
           className="self-center flex flex-col items-center gap-2 text-white/50 hover:text-white transition-colors cursor-pointer"
         >
-          <span className="text-xs tracking-widest uppercase">Skip to Content</span>
-          <ChevronDown className="h-5 w-5" />
-         </motion.button>
-       </div>
+           <span className="text-xs tracking-widest uppercase hidden md:block">Skip to Content</span>
+           <ChevronDown className="h-5 w-5" />
+          </motion.button>
+        </div>
        <OnlineIndicator />
      </section>
    );
