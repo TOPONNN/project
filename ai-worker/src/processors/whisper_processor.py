@@ -131,13 +131,6 @@ class LyricsProcessor:
         ]
         youtube_regex = re.compile('|'.join(youtube_patterns), re.IGNORECASE)
         
-        dialogue_patterns = [
-            r'^(hello|hey|hi|um|uh|yeah|okay|ok|what|why|where)\b',
-            r'^\[.*\]$',
-            r'^\(.*\)$',
-        ]
-        dialogue_regex = re.compile('|'.join(dialogue_patterns), re.IGNORECASE)
-        
         for segment in segments:
             text = segment["text"]
             
@@ -154,10 +147,6 @@ class LyricsProcessor:
             
             if youtube_regex.search(text):
                 print(f"[Clean] Filtered YouTube pattern: {text[:50]}")
-                continue
-            
-            if len(text) < 5 and dialogue_regex.match(text):
-                print(f"[Clean] Filtered dialogue: {text}")
                 continue
                 
             segment["text"] = text

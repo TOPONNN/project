@@ -11,7 +11,7 @@ from src.services.s3_service import s3_service  # type: ignore
 MODEL_NAME = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
 
 
-class DemucsProcessor:
+class SeparatorProcessor:
     model_name: str
 
     def __init__(self):
@@ -41,6 +41,12 @@ class DemucsProcessor:
             separator: Any = Separator(output_dir=output_dir, output_format="WAV")
             separator.load_model(self.model_name)  # type: ignore
             output_files = separator.separate(audio_path)  # type: ignore
+
+            # audio-separator may return relative filenames; ensure absolute paths
+            output_files = [
+                f if os.path.isabs(f) else os.path.join(output_dir, os.path.basename(f))
+                for f in output_files
+            ]
 
             for output_file in output_files:
                 filename = os.path.basename(output_file)
@@ -86,4 +92,4 @@ class DemucsProcessor:
         }
 
 
-demucs_processor = DemucsProcessor()
+separator_processor = SeparatorProcessor()

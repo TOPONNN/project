@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional
 from src.config import REDIS_HOST, REDIS_PORT, QUEUE_NAMES, TEMP_DIR, BACKEND_API_URL
 from src.services.rabbitmq_service import rabbitmq_service
 from src.services.s3_service import s3_service
-from src.processors.demucs_processor import demucs_processor
+from src.processors.separator_processor import separator_processor
 from src.processors.whisper_processor import lyrics_processor as whisper_processor
 from src.processors.crepe_processor import crepe_processor
 
@@ -114,7 +114,7 @@ class AIWorker:
         try:
             if "separate" in tasks:
                 self._update_status(song_id, "processing", "음원 분리 중...", step="separation", progress=0)
-                separation_result = demucs_processor.separate(
+                separation_result = separator_processor.separate(
                     local_audio_path, song_id, folder_name,
                     progress_callback=lambda p: self._update_status(song_id, "processing", f"음원 분리 중... {p}%", step="separation", progress=p)
                 )
