@@ -122,7 +122,7 @@ export default function HeroSection() {
 
   return (
     <section ref={containerRef} className="relative min-h-screen md:h-screen w-full overflow-y-auto md:overflow-hidden bg-black">
-      <motion.div style={{ y, scale, opacity }} className="absolute inset-0 z-0">
+      <motion.div style={{ y, scale, opacity }} className="absolute inset-0 z-0 hidden md:block">
         <video
           autoPlay
           loop
@@ -141,6 +141,19 @@ export default function HeroSection() {
           transition={{ duration: 0.5 }}
         />
       </motion.div>
+      <div className="absolute inset-0 z-0 md:hidden">
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover opacity-50"
+        >
+          <source src="/hero-video.webm" type="video/webm" />
+          <source src="/hero-video.mp4" type="video/mp4" />
+        </video>
+        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/80" />
+      </div>
 
       <div className="relative z-10 flex h-full w-full flex-col justify-between p-4 sm:p-6 md:p-12 lg:p-20">
         <div className="flex flex-col gap-6 mt-12 sm:mt-16 md:mt-20">
@@ -233,18 +246,18 @@ export default function HeroSection() {
                 <motion.button
                   key={mode.id}
                   onClick={() => setActiveMode(i)}
-                  className={`flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all ${
-                    isActive
-                      ? "bg-black/60 backdrop-blur-md border-white/30"
-                      : "bg-black/40 backdrop-blur-sm border-white/10"
-                  }`}
-                  style={isActive ? { borderColor: `${mode.accent}80`, boxShadow: `0 0 24px -4px ${mode.accent}40` } : undefined}
+                  className="flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all backdrop-blur-sm"
+                  style={{
+                    background: isActive ? `linear-gradient(135deg, ${mode.accent}25, ${mode.accent}10)` : `linear-gradient(135deg, ${mode.accent}10, transparent)`,
+                    borderColor: isActive ? `${mode.accent}80` : `${mode.accent}20`,
+                    boxShadow: isActive ? `0 0 24px -4px ${mode.accent}50` : 'none',
+                  }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  <ModeIcon className="w-5 h-5 shrink-0" style={{ color: isActive ? mode.accent : '#aaa' }} />
+                  <ModeIcon className="w-5 h-5 shrink-0" style={{ color: mode.accent }} />
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm font-bold truncate ${isActive ? 'text-white' : 'text-gray-200'}`}>{mode.title}</p>
-                    <p className={`text-[11px] truncate ${isActive ? 'text-gray-300' : 'text-gray-400'}`}>{mode.subtitle}</p>
+                    <p className="text-[11px] truncate" style={{ color: isActive ? `${mode.accent}cc` : `${mode.accent}80` }}>{mode.subtitle}</p>
                   </div>
                 </motion.button>
               );
