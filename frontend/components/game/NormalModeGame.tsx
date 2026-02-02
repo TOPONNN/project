@@ -71,7 +71,8 @@ export default function NormalModeGame() {
   // Game phase derived from localTime
   const gamePhase: GamePhase = useMemo(() => {
     if (lyrics.length === 0) return 'intro';
-    if (localTime < Math.max(0, lyrics[0].startTime - 1)) return 'intro';
+    const introEnd = Math.min(lyrics[0].startTime - 1, 5);
+    if (localTime < Math.max(0, introEnd)) return 'intro';
     return 'singing';
   }, [localTime, lyrics]);
 
