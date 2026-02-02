@@ -402,12 +402,11 @@ export default function PerfectScoreGame() {
       analyserRef.current.getFloatTimeDomainData(buffer);
       const frequency = autoCorrelate(buffer, audioContextRef.current.sampleRate);
 
-      if (frequency > 0) {
-        latestPitchRef.current = { frequency, time: now };
-        const rawMidi = freqToMidi(frequency);
-        const quantizedMidi = Math.round(rawMidi);
-        userPitchTrailRef.current.push({ time: now, midi: quantizedMidi });
-      }
+       if (frequency > 0) {
+         latestPitchRef.current = { frequency, time: now };
+         const rawMidi = freqToMidi(frequency);
+         userPitchTrailRef.current.push({ time: now, midi: rawMidi });
+       }
     }
 
     userPitchTrailRef.current = userPitchTrailRef.current.filter(point => now - point.time <= USER_TRAIL_SECONDS);
@@ -643,13 +642,15 @@ export default function PerfectScoreGame() {
         ctx.closePath();
       };
 
-      words.forEach((word, index) => {
-        if (typeof word.midi !== "number") return;
-        if (word.endTime < startTime || word.startTime > endTime) return;
+       words.forEach((word, index) => {
+         if (typeof word.midi !== "number") return;
+         if (word.endTime < startTime || word.startTime > endTime) return;
 
-        const xStart = hitLineX + (word.startTime - now) * pixelsPerSecond;
-        const xEnd = hitLineX + (word.endTime - now) * pixelsPerSecond;
-        const barWidth = Math.max(12, xEnd - xStart);
+         const xStartRaw = hitLineX + (word.startTime - now) * pixelsPerSecond;
+         const xEndRaw = hitLineX + (word.endTime - now) * pixelsPerSecond;
+         const xStart = xStartRaw + 1.5;
+         const xEnd = xEndRaw - 1.5;
+         const barWidth = Math.max(8, xEnd - xStart);
         const yCenter = midiToY(word.midi);
         const barHeight = 12;
         const yTop = yCenter - barHeight / 2;
@@ -765,16 +766,14 @@ export default function PerfectScoreGame() {
           if (!started) {
             ctx.moveTo(x, y);
             started = true;
-          } else {
-            const prevPoint = trail[i - 1];
-            if (point.time - prevPoint.time > 0.3 || Math.abs(point.midi - prevPoint.midi) > 12) {
-              ctx.moveTo(x, y);
-            } else {
-              const prevY = midiToY(prevPoint.midi);
-              ctx.lineTo(x, prevY);
-              ctx.lineTo(x, y);
-            }
-          }
+           } else {
+             const prevPoint = trail[i - 1];
+             if (point.time - prevPoint.time > 0.3 || Math.abs(point.midi - prevPoint.midi) > 12) {
+               ctx.moveTo(x, y);
+             } else {
+               ctx.lineTo(x, y);
+             }
+           }
         }
         ctx.stroke();
 

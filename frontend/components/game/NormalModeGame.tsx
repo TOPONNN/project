@@ -27,7 +27,7 @@ interface LyricsLine {
 
 // 노래방 싱크 설정 상수
 const SYNC_CONFIG = {
-  WORD_LEAD_TIME: 0.10,        // 단어 하이라이트가 미리 시작하는 시간 (초)
+  WORD_LEAD_TIME: 0.05,        // 단어 하이라이트가 미리 시작하는 시간 (초)
   NEXT_LINE_PREVIEW: 0.5,      // 다음 가사 미리보기 시간 (초)
   LINE_HOLD_AFTER_END: 0.5,    // 가사가 끝난 후 유지 시간 (초)
 };
@@ -365,51 +365,23 @@ export default function NormalModeGame() {
 
   const progress = duration ? (localTime / duration) * 100 : 0;
 
-  // 단어별 하이라이트 진행률 계산 (MFA 타이밍 기반)
-  const getWordProgressInLine = useCallback((line: LyricsLine, wordIndex: number): number => {
-    if (!line.words || line.words.length === 0) return 0;
-    
-    const word = line.words[wordIndex];
-    const wordStart = word.startTime - SYNC_CONFIG.WORD_LEAD_TIME;
-    const wordEnd = word.endTime;
-    const wordDuration = wordEnd - wordStart;
-    
-    if (wordDuration <= 0) return localTime >= wordStart ? 100 : 0;
-    if (localTime < wordStart) return 0;
-    if (localTime >= wordEnd) return 100;
-    
-     // Raw linear progress 0-1
+   // 단어별 하이라이트 진행률 계산 (MFA 타이밍 기반)
+   const getWordProgressInLine = useCallback((line: LyricsLine, wordIndex: number): number => {
+     if (!line.words || line.words.length === 0) return 0;
+     
+     const word = line.words[wordIndex];
+     const wordStart = word.startTime - SYNC_CONFIG.WORD_LEAD_TIME;
+     const wordEnd = word.endTime;
+     const wordDuration = wordEnd - wordStart;
+     
+     if (wordDuration <= 0) return localTime >= wordStart ? 100 : 0;
+     if (localTime < wordStart) return 0;
+     if (localTime >= wordEnd) return 100;
+     
+     // Simple linear progress — most accurate for karaoke sync
      const t = (localTime - wordStart) / wordDuration;
-     
-     // Energy affects fill speed: high energy = faster start, low = slower
-     const energy = word.energy ?? 0.5;
-     
-     // Use energy curve if available for intra-word modulation
-     let effectiveEnergy = energy;
-     const curve = word.energyCurve || (word as any).energy_curve;
-     if (curve && curve.length > 1) {
-       // Sample the energy curve at current position within the word
-       const curveIndex = Math.min(
-         curve.length - 1,
-         Math.floor(t * curve.length)
-       );
-       effectiveEnergy = curve[curveIndex];
-     }
-     
-     // Sigmoid-based fill: strong vocals push fill ahead, weak vocals lag behind
-     // k controls steepness: higher energy = steeper sigmoid = faster middle fill
-     const k = 4 + effectiveEnergy * 8; // Range: 4 (soft) to 12 (strong)
-     const sigmoid = 1 / (1 + Math.exp(-k * (t - 0.5)));
-     // Normalize sigmoid to 0-1 range
-     const sigMin = 1 / (1 + Math.exp(-k * -0.5));
-     const sigMax = 1 / (1 + Math.exp(-k * 0.5));
-     const normalizedSigmoid = (sigmoid - sigMin) / (sigMax - sigMin);
-     
-     // Sigmoid curve modulated by energy only
-     const progress = normalizedSigmoid * 100;
-     
-     return Math.min(100, Math.max(0, progress));
-  }, [localTime]);
+     return Math.min(100, Math.max(0, t * 100));
+   }, [localTime]);
 
   // 라인 전체 진행률 (단어가 없을 때 사용)
   const getLineProgress = useCallback((line: LyricsLine): number => {
