@@ -275,15 +275,50 @@ const KeyboardShowcase = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [splineApp, isMobile]);
 
-  // Reveal keyboard on load
-  useEffect(() => {
-    if (!splineApp || isLoaded) return;
-    setIsLoaded(true);
-    revealKeyboard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [splineApp]);
+   // Reveal keyboard on load
+   useEffect(() => {
+     if (!splineApp || isLoaded) return;
+     setIsLoaded(true);
+     revealKeyboard();
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [splineApp]);
 
-  return (
+   // Handle text visibility for skill hover display
+   useEffect(() => {
+     if (!splineApp) return;
+     const textDesktopDark = splineApp.findObjectByName("text-desktop-dark");
+     const textDesktopLight = splineApp.findObjectByName("text-desktop");
+     const textMobileDark = splineApp.findObjectByName("text-mobile-dark");
+     const textMobileLight = splineApp.findObjectByName("text-mobile");
+
+     if (!textDesktopDark || !textDesktopLight || !textMobileDark || !textMobileLight) return;
+
+     const hideAll = () => {
+       textDesktopDark.visible = false;
+       textDesktopLight.visible = false;
+       textMobileDark.visible = false;
+       textMobileLight.visible = false;
+     };
+
+     if (phase !== "skills") {
+       hideAll();
+     } else if (isMobile) {
+       hideAll();
+       textMobileLight.visible = true;
+     } else {
+       hideAll();
+       textDesktopLight.visible = true;
+     }
+   }, [splineApp, isMobile, phase]);
+
+   // Set Spline text variables when skill selection changes
+   useEffect(() => {
+     if (!selectedSkill || !splineApp) return;
+     splineApp.setVariable("heading", selectedSkill.label);
+     splineApp.setVariable("desc", selectedSkill.shortDescription);
+   }, [selectedSkill, splineApp]);
+
+   return (
     <section ref={sectionRef} className="relative bg-black" style={{ height: "400vh" }}>
       {/* Sticky container - stays pinned while user scrolls through the 400vh */}
       <div ref={stickyRef} className="sticky top-0 h-screen w-full overflow-hidden bg-black">
