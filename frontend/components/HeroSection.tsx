@@ -4,6 +4,7 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { ChevronDown, Music, Target, MessageSquareText, Swords, Users } from "lucide-react";
 import Link from "next/link";
+import { useLenis } from "lenis/react";
 import OnlineIndicator from "@/components/OnlineIndicator";
 
 const modes = [
@@ -59,6 +60,7 @@ export default function HeroSection() {
   const [hasExitedHero, setHasExitedHero] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastScrollTime = useRef(0);
+  const lenis = useLenis();
   
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -82,6 +84,21 @@ export default function HeroSection() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Lock/unlock scroll using Lenis API
+  useEffect(() => {
+    if (!lenis) return;
+    
+    if (!hasExitedHero && activeMode < modes.length - 1) {
+      lenis.stop();
+    } else {
+      lenis.start();
+    }
+    
+    return () => {
+      lenis.start(); // Ensure scroll is enabled on unmount
+    };
+  }, [lenis, hasExitedHero, activeMode]);
+
   const scrollToContent = () => {
     const heroHeight = containerRef.current?.offsetHeight || window.innerHeight;
     window.scrollTo({ top: heroHeight, behavior: 'smooth' });
@@ -98,8 +115,6 @@ export default function HeroSection() {
     if (scrollingDown && isLastMode) return;
     if (scrollingUp && isFirstMode) return;
     
-    e.preventDefault();
-    
     const now = Date.now();
     if (now - lastScrollTime.current < 400) return;
     
@@ -113,7 +128,7 @@ export default function HeroSection() {
   }, [hasExitedHero, activeMode]);
 
   useEffect(() => {
-    window.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('wheel', handleWheel, { passive: true });
     return () => window.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 

@@ -1,4 +1,4 @@
-export type Section = "hero" | "skills" | "specs" | "faq";
+export type Section = "hero" | "team" | "skills" | "specs" | "cta" | "faq";
 
 export const STATES = {
   hero: {
@@ -11,6 +11,26 @@ export const STATES = {
       scale: { x: 0.3, y: 0.3, z: 0.3 },
       position: { x: 0, y: -200, z: 0 },
       rotation: { x: 0, y: 0, z: 0 },
+    },
+  },
+  team: {
+    desktop: {
+      scale: { x: 0.25, y: 0.25, z: 0.25 },
+      position: { x: 0, y: -40, z: 0 },
+      rotation: {
+        x: 0,
+        y: Math.PI / 12,
+        z: 0,
+      },
+    },
+    mobile: {
+      scale: { x: 0.3, y: 0.3, z: 0.3 },
+      position: { x: 0, y: -40, z: 0 },
+      rotation: {
+        x: 0,
+        y: Math.PI / 6,
+        z: 0,
+      },
     },
   },
   skills: {
@@ -53,9 +73,29 @@ export const STATES = {
       },
     },
   },
-  faq: {
+  cta: {
     desktop: {
       scale: { x: 0.2, y: 0.2, z: 0.2 },
+      position: { x: 350, y: -250, z: 0 },
+      rotation: {
+        x: 0,
+        y: 0,
+        z: 0,
+      },
+    },
+    mobile: {
+      scale: { x: 0.25, y: 0.25, z: 0.25 },
+      position: { x: 0, y: 150, z: 0 },
+      rotation: {
+        x: Math.PI,
+        y: Math.PI / 3,
+        z: Math.PI,
+      },
+    },
+  },
+  faq: {
+    desktop: {
+      scale: { x: 0.15, y: 0.15, z: 0.15 },
       position: { x: 350, y: -250, z: 0 },
       rotation: {
         x: 0,

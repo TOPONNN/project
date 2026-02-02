@@ -1,0 +1,26 @@
+"use client";
+
+import RevealAnimation from "@/components/animations/RevealAnimation";
+import SectionWrapper from "@/components/animations/SectionWrapper";
+
+const SkillsSection = () => {
+  return (
+    <SectionWrapper
+      id="skills"
+      className="w-full h-screen md:h-[150dvh] pointer-events-none"
+    >
+      <div className="flex flex-col items-center justify-start pt-16 md:pt-24 text-center">
+        <RevealAnimation>
+          <h2 className="text-4xl md:text-6xl font-bold text-white/90">
+            Tech Stack
+          </h2>
+        </RevealAnimation>
+        <RevealAnimation delay={0.2}>
+          <p className="mt-4 text-lg text-white/50">(hint: press a key)</p>
+        </RevealAnimation>
+      </div>
+    </SectionWrapper>
+  );
+};
+
+export default SkillsSection;

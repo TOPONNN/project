@@ -17,7 +17,7 @@ export default function Footer() {
         </div>
         
         <div className="flex items-center gap-8 text-sm text-gray-400">
-          <button onClick={() => scrollTo('features')} className="hover:text-white transition-colors">Features</button>
+          <button onClick={() => scrollTo('specs')} className="hover:text-white transition-colors">Features</button>
           <button onClick={() => scrollTo('faq')} className="hover:text-white transition-colors">FAQ</button>
           <a href="https://github.com/TOPONNN" className="hover:text-white transition-colors flex items-center gap-2">
             <Github className="h-4 w-4" />

@@ -8,7 +8,10 @@ const TEAM = ["윤희준", "정훈호", "김관익", "김성민", "박찬진", "
 
 export default function TeamMarquee() {
   return (
-    <SectionWrapper className="w-full py-12 sm:py-16 md:py-24 overflow-hidden bg-black/90">
+    <SectionWrapper
+      id="team"
+      className="w-full py-12 sm:py-16 md:py-24 overflow-hidden bg-black/90"
+    >
       <div className="absolute inset-0 bg-white/5 backdrop-blur-xl" />
       
       <div className="relative z-10 flex flex-col items-center gap-8">

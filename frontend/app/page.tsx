@@ -7,17 +7,21 @@ import HighlightCTA from "@/components/HighlightCTA";
 import FAQ from "@/components/FAQ";
 import Footer from "@/components/Footer";
 import Header from "@/components/Header";
-import KeyboardShowcase from "@/components/3d/KeyboardShowcase";
+import AnimatedBackground from "@/components/3d/AnimatedBackground";
+import SkillsSection from "@/components/3d/SkillsSection";
 import SmoothScroll from "@/components/animations/SmoothScroll";
 
 export default function Home() {
   return (
     <SmoothScroll>
-      <main className="min-h-screen bg-black text-white selection:bg-[#C0C0C0] selection:text-black">
+      <AnimatedBackground />
+      <main className="relative z-10 min-h-screen text-white selection:bg-[#C0C0C0] selection:text-black">
         <Header />
-        <HeroSection />
+        <section id="hero">
+          <HeroSection />
+        </section>
         <TeamMarquee />
-        <KeyboardShowcase />
+        <SkillsSection />
         <SpecsTable />
         <HighlightCTA />
         <FAQ />

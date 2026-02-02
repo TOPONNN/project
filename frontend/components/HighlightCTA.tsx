@@ -7,7 +7,10 @@ import RevealAnimation from "@/components/animations/RevealAnimation";
 
 export default function HighlightCTA() {
   return (
-    <SectionWrapper className="flex flex-col md:flex-row min-h-screen md:h-screen w-full bg-[#0A0A0A]">
+    <SectionWrapper
+      id="cta"
+      className="flex flex-col md:flex-row min-h-screen md:h-screen w-full bg-[#0A0A0A]"
+    >
       <div className="flex flex-1 flex-col justify-center p-6 sm:p-12 md:p-24">
         <BlurIn>
           <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold leading-tight text-white">
