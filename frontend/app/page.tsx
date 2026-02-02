@@ -2,7 +2,6 @@
 
 import HeroSection from "@/components/HeroSection";
 import TeamMarquee from "@/components/TeamMarquee";
-import SpecsTable from "@/components/SpecsTable";
 import HighlightCTA from "@/components/HighlightCTA";
 import FAQ from "@/components/FAQ";
 import Footer from "@/components/Footer";
@@ -30,7 +29,6 @@ export default function Home() {
         </section>
         <TeamMarquee />
         <SkillsSection />
-        <SpecsTable />
         <HighlightCTA />
         <FAQ />
         <Footer />

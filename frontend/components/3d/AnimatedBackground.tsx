@@ -151,8 +151,7 @@ const AnimatedBackground = () => {
     return [
       createSectionTimeline("#team", "team", "hero"),
       createSectionTimeline("#skills", "skills", "team"),
-      createSectionTimeline("#specs", "specs", "skills"),
-      createSectionTimeline("#cta", "cta", "specs"),
+      createSectionTimeline("#cta", "cta", "skills"),
       createSectionTimeline("#faq", "faq", "cta"),
     ].filter(Boolean) as gsap.core.Timeline[];
   };
@@ -397,19 +396,11 @@ const AnimatedBackground = () => {
         rotateKeyboard?.restart();
         teardownKeyboard?.pause();
       } else {
-        rotateKeyboard?.pause();
-        teardownKeyboard?.pause();
-      }
+       rotateKeyboard?.pause();
+         teardownKeyboard?.pause();
+       }
 
-      if (activeSection === "specs") {
-        await sleep(300);
-        bongoAnimation.start();
-      } else {
-        await sleep(200);
-        bongoAnimation.stop();
-      }
-
-      if (activeSection === "cta" || activeSection === "faq") {
+       if (activeSection === "cta" || activeSection === "faq") {
         await sleep(600);
         teardownKeyboard?.restart();
         keycapAnimations.start();

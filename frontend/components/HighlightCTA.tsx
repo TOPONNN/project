@@ -9,7 +9,7 @@ export default function HighlightCTA() {
   return (
     <SectionWrapper
       id="cta"
-      className="flex flex-col md:flex-row min-h-screen md:h-screen w-full bg-black/60"
+      className="flex flex-col md:flex-row min-h-screen md:h-screen w-full"
     >
       <div className="flex flex-1 flex-col justify-center p-6 sm:p-12 md:p-24">
         <BlurIn>
