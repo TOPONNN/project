@@ -336,9 +336,8 @@ class LyricsProcessor:
             return segments
 
 
-    def _get_whisperx_timing(self, audio_path: str, language: Optional[str] = None) -> Optional[List[Dict]]:
-        """Run WhisperX transcription + alignment to get timing info only.
-        Returns list of segments with word-level timing, or None if failed."""
+    def _whisperx_transcribe(self, audio_path: str, language: Optional[str] = None) -> Optional[List[Dict]]:
+        """Transcribe audio with WhisperX for rough segment timing only."""
         try:
             import whisperx
 
@@ -353,124 +352,211 @@ class LyricsProcessor:
             print(f"[WhisperX] Detected language: {detected_lang}")
             print(f"[WhisperX] Got {len(result.get('segments', []))} segments")
 
-            # Word-level alignment
-            try:
-                model_a, metadata = whisperx.load_align_model(
-                    language_code=detected_lang, device=self.device
-                )
-                result = whisperx.align(
-                    result["segments"], model_a, metadata,
-                    audio, self.device, return_char_alignments=False
-                )
-                print(f"[WhisperX] Aligned {len(result.get('segments', []))} segments")
-                del model_a
-                torch.cuda.empty_cache()
-            except Exception as e:
-                print(f"[WhisperX] Alignment failed: {e}")
-
             self._release_whisperx_model()
             return result.get("segments", [])
         except Exception as e:
-            print(f"[WhisperX] Failed: {e}")
+            print(f"[WhisperX] Transcription failed: {e}")
             self._release_whisperx_model()
             return None
 
-    def _map_api_to_whisperx_timing(self, lyrics_text: str, whisperx_segments: List[Dict]) -> List[Dict]:
-        """Map YouTube Music API lyrics lines onto WhisperX timing.
+    def _whisperx_align_segments(self, audio_path: str, segments: List[Dict], language: Optional[str]) -> Optional[Dict]:
+        """Align provided text segments to audio using wav2vec2 forced alignment."""
+        if not segments:
+            return None
 
-        API lyrics provide the TEXT (official, clean).
-        WhisperX provides the TIMING (when each line/word is sung).
-        """
+        try:
+            import whisperx
+
+            audio = whisperx.load_audio(audio_path)
+            model_a, metadata = whisperx.load_align_model(
+                language_code=language or "en", device=self.device
+            )
+            align_segments = []
+            for seg in segments:
+                text = seg.get("text", "")
+                start = seg.get("start", seg.get("start_time", 0.0))
+                end = seg.get("end", seg.get("end_time", start))
+                align_segments.append({
+                    "text": text,
+                    "start": float(start),
+                    "end": float(end),
+                })
+            result = whisperx.align(
+                align_segments, model_a, metadata,
+                audio, self.device, return_char_alignments=False
+            )
+            print(f"[WhisperX] Aligned {len(result.get('segments', []))} segments")
+            del model_a
+            torch.cuda.empty_cache()
+            return result
+        except Exception as e:
+            print(f"[WhisperX] Alignment failed: {e}")
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            return None
+
+    def _is_hangul_syllable(self, char: str) -> bool:
+        return "\uac00" <= char <= "\ud7a3"
+
+    def _strip_for_match(self, text: str) -> str:
+        normalized = unicodedata.normalize("NFKC", text or "")
+        stripped = []
+        for char in normalized:
+            if char.isspace():
+                continue
+            category = unicodedata.category(char)
+            if category.startswith("P") or category.startswith("S"):
+                continue
+            stripped.append(char)
+        return "".join(stripped)
+
+    def _extract_syllables(self, text: str) -> List[str]:
+        stripped = self._strip_for_match(text)
+        syllables = []
+        for char in stripped:
+            if self._is_hangul_syllable(char):
+                syllables.append(char)
+            elif char.isalnum():
+                syllables.append(char.lower())
+        return syllables
+
+    def _count_chars(self, text: str) -> int:
+        return len(self._extract_syllables(text))
+
+    def _build_syllable_stream(self, segments: List[Dict]) -> List[Dict]:
+        stream = []
+        for seg in segments or []:
+            words = seg.get("words", []) or []
+            if not words and seg.get("text", "").strip():
+                words = [{
+                    "start": seg.get("start", 0.0),
+                    "end": seg.get("end", seg.get("start", 0.0)),
+                    "word": seg.get("text", ""),
+                }]
+
+            for word in words:
+                start = word.get("start", word.get("start_time", 0.0))
+                end = word.get("end", word.get("end_time", start))
+                text = word.get("word", word.get("text", "")).strip()
+                syllables = self._extract_syllables(text)
+                if not syllables:
+                    continue
+                duration = max(end - start, 0.001)
+                step = duration / len(syllables)
+                for idx, syl in enumerate(syllables):
+                    stream.append({
+                        "syl": syl,
+                        "start_time": start + idx * step,
+                        "end_time": start + (idx + 1) * step,
+                    })
+        stream.sort(key=lambda item: item["start_time"])
+        return stream
+
+    def _build_word_timings(self, line_text: str, line_start: float, line_end: float) -> List[Dict]:
+        words = line_text.split()
+        if not words:
+            return []
+
+        char_counts = [max(1, self._count_chars(word)) for word in words]
+        total_chars = sum(char_counts)
+        duration = max(line_end - line_start, 0.5)
+        word_timings = []
+        char_offset = 0
+        for word, chars in zip(words, char_counts):
+            start = line_start + (char_offset / total_chars) * duration
+            end = line_start + ((char_offset + chars) / total_chars) * duration
+            word_timings.append({
+                "start_time": round(start, 3),
+                "end_time": round(end, 3),
+                "text": word,
+            })
+            char_offset += chars
+        return word_timings
+
+    def _interpolate_unmatched_words(self, word_timings: List[Dict], line_start: float, line_end: float) -> None:
+        if not word_timings:
+            return
+
+        matched_indices = [
+            idx for idx, word in enumerate(word_timings)
+            if word.get("start_time") is not None and word.get("end_time") is not None
+        ]
+        if not matched_indices:
+            duration = max(line_end - line_start, 0.5)
+            step = duration / len(word_timings)
+            for idx, word in enumerate(word_timings):
+                word["start_time"] = line_start + idx * step
+                word["end_time"] = line_start + (idx + 1) * step
+            return
+
+        first_idx = matched_indices[0]
+        if first_idx > 0:
+            start = line_start
+            end = word_timings[first_idx]["start_time"]
+            gap = first_idx
+            step = (end - start) / gap if gap else 0.0
+            for offset in range(gap):
+                word = word_timings[offset]
+                word["start_time"] = start + offset * step
+                word["end_time"] = start + (offset + 1) * step
+
+        for left_idx, right_idx in zip(matched_indices, matched_indices[1:]):
+            gap = right_idx - left_idx - 1
+            if gap <= 0:
+                continue
+            start = word_timings[left_idx]["end_time"]
+            end = word_timings[right_idx]["start_time"]
+            step = (end - start) / gap if gap else 0.0
+            for offset in range(gap):
+                word = word_timings[left_idx + 1 + offset]
+                word["start_time"] = start + offset * step
+                word["end_time"] = start + (offset + 1) * step
+
+        last_idx = matched_indices[-1]
+        if last_idx < len(word_timings) - 1:
+            start = word_timings[last_idx]["end_time"]
+            end = line_end
+            gap = len(word_timings) - 1 - last_idx
+            step = (end - start) / gap if gap else 0.0
+            for offset in range(gap):
+                word = word_timings[last_idx + 1 + offset]
+                word["start_time"] = start + offset * step
+                word["end_time"] = start + (offset + 1) * step
+
+    def _enforce_monotonic(self, word_timings: List[Dict], min_word_dur: float, base_start: float) -> None:
+        prev_end = base_start
+        for word in word_timings:
+            start = float(word.get("start_time") or prev_end)
+            end = float(word.get("end_time") or start)
+            if start < prev_end:
+                start = prev_end
+            if end < start + min_word_dur:
+                end = start + min_word_dur
+            word["start_time"] = start
+            word["end_time"] = end
+            prev_end = end
+
+    def _map_lines_to_audio(self, lyrics_text: str, whisperx_segments: List[Dict]) -> List[Dict]:
+        """Map API lyric lines to audio timing using DP syllable alignment."""
         api_lines = [l.strip() for l in lyrics_text.split("\n") if l.strip()]
         if not api_lines:
             return []
 
-        def _is_hangul_syllable(char: str) -> bool:
-            return "\uac00" <= char <= "\ud7a3"
-
-        def _strip_for_match(text: str) -> str:
-            normalized = unicodedata.normalize("NFKC", text or "")
-            stripped = []
-            for char in normalized:
-                if char.isspace():
-                    continue
-                category = unicodedata.category(char)
-                if category.startswith("P") or category.startswith("S"):
-                    continue
-                stripped.append(char)
-            return "".join(stripped)
-
-        def _extract_syllables(text: str) -> List[str]:
-            stripped = _strip_for_match(text)
-            syllables = []
-            for char in stripped:
-                if _is_hangul_syllable(char):
-                    syllables.append(char)
-                elif char.isalnum():
-                    syllables.append(char.lower())
-            return syllables
-
-        def _count_chars(text: str) -> int:
-            return len(_extract_syllables(text))
-
-        def _build_syllable_stream(segments: List[Dict]) -> List[Dict]:
-            stream = []
-            for seg in segments or []:
-                words = seg.get("words", []) or []
-                if not words and seg.get("text", "").strip():
-                    words = [{
-                        "start": seg.get("start", 0.0),
-                        "end": seg.get("end", seg.get("start", 0.0)),
-                        "word": seg.get("text", ""),
-                    }]
-
-                for word in words:
-                    start = word.get("start", word.get("start_time", 0.0))
-                    end = word.get("end", word.get("end_time", start))
-                    text = word.get("word", word.get("text", "")).strip()
-                    syllables = _extract_syllables(text)
-                    if not syllables:
-                        continue
-                    duration = max(end - start, 0.001)
-                    step = duration / len(syllables)
-                    for idx, syl in enumerate(syllables):
-                        stream.append({
-                            "syl": syl,
-                            "start_time": start + idx * step,
-                            "end_time": start + (idx + 1) * step,
-                        })
-            stream.sort(key=lambda item: item["start_time"])
-            return stream
-
-        wx_syllables = _build_syllable_stream(whisperx_segments)
+        wx_syllables = self._build_syllable_stream(whisperx_segments)
         if not wx_syllables:
-            return [{"start_time": 0, "end_time": 0, "text": line, "words": []}
-                    for line in api_lines]
+            return [{"start": 0.0, "end": 0.0, "text": line} for line in api_lines]
 
         line_ranges = []
         api_tokens = []
         line_break = "<LB>"
         for idx, line in enumerate(api_lines):
-            line_syllables = _extract_syllables(line)
+            line_syllables = self._extract_syllables(line)
             start_idx = len(api_tokens)
             api_tokens.extend(line_syllables)
             end_idx = len(api_tokens)
             line_ranges.append((start_idx, end_idx))
             if idx < len(api_lines) - 1:
                 api_tokens.append(line_break)
-
-        line_word_tokens = []
-        for line_idx, (start_idx, end_idx) in enumerate(line_ranges):
-            words = api_lines[line_idx].split()
-            word_tokens = []
-            token_pos = start_idx
-            for word in words:
-                word_syllables = _extract_syllables(word)
-                n_syls = len(word_syllables)
-                token_indices = list(range(token_pos, min(token_pos + n_syls, end_idx)))
-                word_tokens.append(token_indices)
-                token_pos += n_syls
-            line_word_tokens.append(word_tokens)
 
         if not api_tokens:
             total_start = wx_syllables[0]["start_time"]
@@ -481,21 +567,10 @@ class LyricsProcessor:
             for i, line in enumerate(api_lines):
                 start_time = total_start + i * per_line
                 end_time = start_time + per_line
-                words = line.split()
-                word_timings = []
-                if words:
-                    word_dur = per_line / len(words)
-                    for j, word in enumerate(words):
-                        word_timings.append({
-                            "start_time": round(start_time + j * word_dur, 3),
-                            "end_time": round(start_time + (j + 1) * word_dur, 3),
-                            "text": word,
-                        })
                 result.append({
-                    "start_time": round(start_time, 3),
-                    "end_time": round(end_time, 3),
+                    "start": round(start_time, 3),
+                    "end": round(end_time, 3),
                     "text": line,
-                    "words": word_timings,
                 })
             return result
 
@@ -620,8 +695,8 @@ class LyricsProcessor:
                 if prev_lt["start_time"] is not None and prev_lt["end_time"] is not None:
                     prev_dur = prev_lt["end_time"] - prev_lt["start_time"]
                     if prev_dur > 6.0:
-                        prev_chars = max(1, len(_extract_syllables(prev_lt["text"])))
-                        curr_chars = max(1, len(_extract_syllables(lt["text"])))
+                        prev_chars = max(1, len(self._extract_syllables(prev_lt["text"])))
+                        curr_chars = max(1, len(self._extract_syllables(lt["text"])))
                         total_dur = prev_dur + dur
                         total_chars = prev_chars + curr_chars
                         new_prev_dur = total_dur * (prev_chars / total_chars)
@@ -636,8 +711,8 @@ class LyricsProcessor:
                 if next_lt["start_time"] is not None and next_lt["end_time"] is not None:
                     next_dur = next_lt["end_time"] - next_lt["start_time"]
                     if next_dur < 1.5:
-                        curr_chars = max(1, len(_extract_syllables(lt["text"])))
-                        next_chars = max(1, len(_extract_syllables(next_lt["text"])))
+                        curr_chars = max(1, len(self._extract_syllables(lt["text"])))
+                        next_chars = max(1, len(self._extract_syllables(next_lt["text"])))
                         total_dur = dur + next_dur
                         total_chars = curr_chars + next_chars
                         new_curr_dur = total_dur * (curr_chars / total_chars)
@@ -647,164 +722,83 @@ class LyricsProcessor:
                         next_lt["start_time"] = round(new_boundary, 3)
                         next_lt["end_time"] = round(new_boundary + (total_dur - new_curr_dur), 3)
 
-        def _build_word_timings(line_text: str, line_start: float, line_end: float) -> List[Dict]:
-            words = line_text.split()
-            if not words:
-                return []
+        result = []
+        for line in line_timings:
+            start_time = line["start_time"]
+            end_time = line["end_time"]
+            if start_time is None or end_time is None:
+                start_time = 0.0 if start_time is None else start_time
+                end_time = start_time + 0.5 if end_time is None else end_time
+            result.append({
+                "start": round(float(start_time), 3),
+                "end": round(float(end_time), 3),
+                "text": line["text"],
+            })
+        return result
 
-            char_counts = [max(1, _count_chars(word)) for word in words]
-            total_chars = sum(char_counts)
-            duration = max(line_end - line_start, 0.5)
-            word_timings = []
-            char_offset = 0
-            for word, chars in zip(words, char_counts):
-                start = line_start + (char_offset / total_chars) * duration
-                end = line_start + ((char_offset + chars) / total_chars) * duration
-                word_timings.append({
-                    "start_time": round(start, 3),
-                    "end_time": round(end, 3),
-                    "text": word,
-                })
-                char_offset += chars
-            return word_timings
-
-        def _interpolate_unmatched_words(word_timings: List[Dict], line_start: float, line_end: float) -> None:
-            if not word_timings:
-                return
-
-            matched_indices = [
-                idx for idx, word in enumerate(word_timings)
-                if word.get("start_time") is not None and word.get("end_time") is not None
-            ]
-            if not matched_indices:
-                duration = max(line_end - line_start, 0.5)
-                step = duration / len(word_timings)
-                for idx, word in enumerate(word_timings):
-                    word["start_time"] = line_start + idx * step
-                    word["end_time"] = line_start + (idx + 1) * step
-                return
-
-            first_idx = matched_indices[0]
-            if first_idx > 0:
-                start = line_start
-                end = word_timings[first_idx]["start_time"]
-                gap = first_idx
-                step = (end - start) / gap if gap else 0.0
-                for offset in range(gap):
-                    word = word_timings[offset]
-                    word["start_time"] = start + offset * step
-                    word["end_time"] = start + (offset + 1) * step
-
-            for left_idx, right_idx in zip(matched_indices, matched_indices[1:]):
-                gap = right_idx - left_idx - 1
-                if gap <= 0:
-                    continue
-                start = word_timings[left_idx]["end_time"]
-                end = word_timings[right_idx]["start_time"]
-                step = (end - start) / gap if gap else 0.0
-                for offset in range(gap):
-                    word = word_timings[left_idx + 1 + offset]
-                    word["start_time"] = start + offset * step
-                    word["end_time"] = start + (offset + 1) * step
-
-            last_idx = matched_indices[-1]
-            if last_idx < len(word_timings) - 1:
-                start = word_timings[last_idx]["end_time"]
-                end = line_end
-                gap = len(word_timings) - 1 - last_idx
-                step = (end - start) / gap if gap else 0.0
-                for offset in range(gap):
-                    word = word_timings[last_idx + 1 + offset]
-                    word["start_time"] = start + offset * step
-                    word["end_time"] = start + (offset + 1) * step
-
-        def _enforce_monotonic(word_timings: List[Dict], min_word_dur: float, base_start: float) -> None:
-            prev_end = base_start
-            for word in word_timings:
-                start = float(word.get("start_time") or prev_end)
-                end = float(word.get("end_time") or start)
-                if start < prev_end:
-                    start = prev_end
-                if end < start + min_word_dur:
-                    end = start + min_word_dur
-                word["start_time"] = start
-                word["end_time"] = end
-                prev_end = end
+    def _build_lyrics_from_aligned(self, api_segments: List[Dict], aligned_result: Optional[Dict]) -> List[Dict]:
+        """Convert whisperx aligned output to our lyrics format."""
+        aligned_segments: List[Dict] = []
+        if isinstance(aligned_result, dict):
+            aligned_segments = aligned_result.get("segments", []) or []
+        elif isinstance(aligned_result, list):
+            aligned_segments = aligned_result
 
         result = []
         prev_end = 0.0
         min_word_dur = 0.06
-        for line_idx, line in enumerate(line_timings):
-            start_time = float(line["start_time"] or 0.0)
-            end_time = float(line["end_time"] or (start_time + 0.5))
 
-            if start_time < prev_end:
-                start_time = prev_end
-            if end_time < start_time:
-                end_time = start_time + 0.5
+        for idx, api_seg in enumerate(api_segments):
+            aligned_seg = aligned_segments[idx] if idx < len(aligned_segments) else {}
+            words_data = aligned_seg.get("words") or []
 
-            duration = end_time - start_time
-            if duration < 1.0:
-                end_time = start_time + 1.0
-                duration = 1.0
-            if duration > 15.0:
-                end_time = start_time + 15.0
-
-            words = api_lines[line_idx].split()
             word_timings: List[Dict] = []
+            for word in words_data:
+                w_start = word.get("start", word.get("start_time"))
+                w_end = word.get("end", word.get("end_time"))
+                w_text = word.get("word", word.get("text", "")).strip()
+                if not w_text:
+                    continue
+                word_timings.append({
+                    "start_time": None if w_start is None else float(w_start),
+                    "end_time": None if w_end is None else float(w_end),
+                    "text": w_text,
+                })
 
-            range_start, range_end = line_ranges[line_idx]
-            aligned_for_line = [
-                aligned_indices[k] for k in range(range_start, range_end)
-                if aligned_indices[k] >= 0
-            ]
+            line_start = float(api_seg.get("start", prev_end))
+            line_end = float(api_seg.get("end", line_start + 1.0))
 
-            if words and not aligned_for_line:
-                word_timings = _build_word_timings(line["text"], start_time, end_time)
-            elif words:
-                for word_idx, word in enumerate(words):
-                    token_indices = []
-                    if word_idx < len(line_word_tokens[line_idx]):
-                        token_indices = line_word_tokens[line_idx][word_idx]
+            if line_start < prev_end:
+                line_start = prev_end
+            if line_end < line_start:
+                line_end = line_start + 0.5
 
-                    aligned_wx = [
-                        aligned_indices[token_idx]
-                        for token_idx in token_indices
-                        if token_idx < len(aligned_indices) and aligned_indices[token_idx] >= 0
-                    ]
-                    if aligned_wx:
-                        min_idx = min(aligned_wx)
-                        max_idx = max(aligned_wx)
-                        word_timings.append({
-                            "start_time": wx_syllables[min_idx]["start_time"],
-                            "end_time": wx_syllables[max_idx]["end_time"],
-                            "text": word,
-                        })
-                    else:
-                        word_timings.append({
-                            "start_time": None,
-                            "end_time": None,
-                            "text": word,
-                        })
+            duration = line_end - line_start
+            if duration < 1.0:
+                line_end = line_start + 1.0
+            if duration > 15.0:
+                line_end = line_start + 15.0
 
-                _interpolate_unmatched_words(word_timings, start_time, end_time)
-                _enforce_monotonic(word_timings, min_word_dur, start_time)
-
+            if word_timings:
+                self._interpolate_unmatched_words(word_timings, line_start, line_end)
+                self._enforce_monotonic(word_timings, min_word_dur, line_start)
                 for word in word_timings:
                     word["start_time"] = round(float(word["start_time"]), 3)
                     word["end_time"] = round(float(word["end_time"]), 3)
+            else:
+                word_timings = self._build_word_timings(api_seg["text"], line_start, line_end)
 
             if word_timings:
                 line_start_final = word_timings[0]["start_time"]
                 line_end_final = word_timings[-1]["end_time"]
             else:
-                line_start_final = round(start_time, 3)
-                line_end_final = round(end_time, 3)
+                line_start_final = round(float(line_start), 3)
+                line_end_final = round(float(line_end), 3)
 
             result.append({
                 "start_time": round(float(line_start_final), 3),
                 "end_time": round(float(line_end_final), 3),
-                "text": line["text"],
+                "text": api_seg["text"],
                 "words": word_timings,
             })
             prev_end = float(line_end_final)
@@ -862,34 +856,66 @@ class LyricsProcessor:
             progress_callback(15)
 
         # ==============================================================
-        # Stage 2-3: WhisperX Transcription + Alignment (TIMING ONLY)
+        # Stage 2: WhisperX Transcription (rough timing only)
         # ==============================================================
         print("=" * 60)
-        print("[Stage 2-3: WhisperX] Getting timing from audio...")
+        print("[Stage 2: WhisperX] Transcribing for rough timing...")
         print("=" * 60)
 
-        whisperx_segments = self._get_whisperx_timing(audio_path, language)
+        whisperx_segments = self._whisperx_transcribe(audio_path, detected_language)
 
         if progress_callback:
             progress_callback(50)
 
         # ==============================================================
-        # Stage 4: Map API lyrics to WhisperX timing
+        # Stage 3: Map API lyrics lines to audio regions (DP)
         # ==============================================================
         print("=" * 60)
-        print("[Stage 4: Mapping] Mapping API text onto audio timing...")
+        print("[Stage 3: Mapping] Mapping API lines onto audio timing...")
         print("=" * 60)
 
+        def _build_even_line_segments(text: str, total_duration: float) -> List[Dict]:
+            lines = [l.strip() for l in text.split("\n") if l.strip()]
+            if not lines:
+                return []
+            if total_duration <= 0:
+                total_duration = max(len(lines) * 0.5, 1.0)
+            per_line = total_duration / len(lines)
+            segments = []
+            for i, line in enumerate(lines):
+                start = i * per_line
+                end = start + per_line
+                segments.append({
+                    "start": round(float(start), 3),
+                    "end": round(float(end), 3),
+                    "text": line,
+                })
+            return segments
+
         if whisperx_segments:
-            lyrics_lines = self._map_api_to_whisperx_timing(lyrics_text, whisperx_segments)
-            print(f"[Mapping] {len(lyrics_lines)} lines mapped to WhisperX timing")
+            api_line_segments = self._map_lines_to_audio(lyrics_text, whisperx_segments)
+            print(f"[Mapping] {len(api_line_segments)} lines mapped to audio regions")
         else:
-            print("[Mapping] WhisperX failed — returning empty lyrics (no timing source)")
-            lyrics_lines = []
+            print("[Mapping] WhisperX failed — using even line distribution")
+            api_line_segments = _build_even_line_segments(lyrics_text, duration)
 
         if progress_callback:
             progress_callback(55)
 
+        # ==============================================================
+        # Stage 4: WhisperX Forced Alignment (wav2vec2)
+        # ==============================================================
+        print("=" * 60)
+        print("[Stage 4: Alignment] Forcing API text alignment...")
+        print("=" * 60)
+
+        aligned_segments = None
+        if api_line_segments:
+            aligned_segments = self._whisperx_align_segments(audio_path, api_line_segments, detected_language)
+        else:
+            print("[Alignment] No line segments available for alignment")
+
+        lyrics_lines = self._build_lyrics_from_aligned(api_line_segments, aligned_segments)
 
         if progress_callback:
             progress_callback(60)
