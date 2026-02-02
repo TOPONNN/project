@@ -27,8 +27,7 @@ pipeline {
             steps {
                 sh '''
                     cd /home/ubuntu/project
-                    docker compose down || true
-                    docker compose up -d --build
+                    docker compose up -d --build frontend backend nginx
                 '''
             }
         }
