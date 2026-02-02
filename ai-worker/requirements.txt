@@ -8,7 +8,7 @@ silero-vad>=5.1
 omegaconf>=2.3.0
 
 audio-separator>=0.40.0
-torchcrepe==0.0.24
+torchfcpe
 
 numpy>=2.0.0
 scipy>=1.14.0

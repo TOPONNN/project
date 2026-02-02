@@ -2,7 +2,7 @@ import os
 import json
 import numpy as np
 import torch
-import torchcrepe
+from torchfcpe import spawn_bundled_infer_model
 import librosa
 from typing import Dict, List, Callable, Optional
 from src.config import TEMP_DIR
@@ -13,6 +13,7 @@ class CrepeProcessor:
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.chunk_duration = 60  # seconds - larger chunks since small model uses less VRAM
+        self.model = spawn_bundled_infer_model(device=self.device)
 
     def analyze_pitch(self, audio_path: str, song_id: str, folder_name: str = None, progress_callback: Optional[Callable[[int], None]] = None) -> Dict:
         if folder_name is None:
@@ -29,24 +30,28 @@ class CrepeProcessor:
         
         for i, start in enumerate(range(0, len(audio), chunk_samples)):
             chunk = audio[start:start + chunk_samples]
-            audio_tensor = torch.tensor(chunk).unsqueeze(0).to(self.device)
+            # FCPE requires [batch, samples, 1] shape
+            audio_tensor = torch.from_numpy(chunk).float().unsqueeze(0).unsqueeze(-1).to(self.device)
             
-            pitch_chunk, periodicity_chunk = torchcrepe.predict(
+            f0_chunk = self.model.infer(
                 audio_tensor,
-                sr,
-                hop_length=160,       # Keep 10ms for real-time scoring
-                fmin=65,              # C2 - lowest practical singing note
-                fmax=1047,            # C6 - highest practical singing note
-                model='tiny',         # Fast model, sufficient for karaoke scoring
-                device=self.device,
-                return_periodicity=True,
+                sr=sr,
+                decoder_mode="local_argmax",
+                threshold=0.006,
+                f0_min=65,
+                f0_max=1047,
+                interp_uv=False,
             )
             
-            all_pitch.append(pitch_chunk.squeeze().cpu().numpy())
-            all_periodicity.append(periodicity_chunk.squeeze().cpu().numpy())
+            f0_values = f0_chunk.squeeze().cpu().numpy()
+            # FCPE doesn't return confidence; synthesize from voicing
+            confidence_values = np.where(f0_values > 0, 1.0, 0.0).astype(np.float32)
+            
+            all_pitch.append(f0_values)
+            all_periodicity.append(confidence_values)
             
             # GPU 메모리 해제
-            del audio_tensor, pitch_chunk, periodicity_chunk
+            del audio_tensor, f0_chunk
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             

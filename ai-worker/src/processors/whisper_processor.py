@@ -10,7 +10,7 @@ import unicodedata
 
 import numpy as np
 import librosa
-import torchcrepe
+from torchfcpe import spawn_bundled_infer_model
 import requests
 import soundfile as sf
 
@@ -246,25 +246,34 @@ class LyricsProcessor:
             all_pitch = []
             all_periodicity = []
             
+            # Lazy-load FCPE model
+            if not hasattr(self, '_fcpe_model'):
+                self._fcpe_model = spawn_bundled_infer_model(device=self.device)
+            
             for start in range(0, len(audio), chunk_samples):
                 chunk = audio[start:start + chunk_samples]
-                audio_tensor = torch.tensor(chunk).unsqueeze(0).to(self.device)
+                # FCPE requires [batch, samples, 1] shape
+                audio_tensor = torch.from_numpy(chunk).float().unsqueeze(0).unsqueeze(-1).to(self.device)
                 
-                pitch_chunk, periodicity_chunk = torchcrepe.predict(
+                f0_chunk = self._fcpe_model.infer(
                     audio_tensor,
-                    sr,
-                    hop_length=320,     # 20ms resolution (sufficient for word-level averages)
-                    fmin=65,            # C2 - lowest practical singing note
-                    fmax=1047,          # C6 - highest practical singing note
-                    model='tiny',       # Fast model, accurate enough for word averages
-                    device=self.device,
-                    return_periodicity=True,
+                    sr=sr,
+                    decoder_mode="local_argmax",
+                    threshold=0.006,
+                    f0_min=65,
+                    f0_max=1047,
+                    interp_uv=False,
                 )
                 
-                all_pitch.append(pitch_chunk.squeeze().cpu().numpy())
-                all_periodicity.append(periodicity_chunk.squeeze().cpu().numpy())
+                f0_values = f0_chunk.squeeze().cpu().numpy()
+                # FCPE doesn't return confidence; synthesize from voicing
+                confidence_values = np.where(f0_values > 0, 1.0, 0.0).astype(np.float32)
                 
-                del audio_tensor, pitch_chunk, periodicity_chunk
+                # Downsample from 10ms (FCPE default) to 20ms to match original hop_length=320
+                all_pitch.append(f0_values[::2])
+                all_periodicity.append(confidence_values[::2])
+                
+                del audio_tensor, f0_chunk
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
             
@@ -272,7 +281,7 @@ class LyricsProcessor:
             periodicity = np.concatenate(all_periodicity)
             time = np.arange(len(pitch)) * 320 / sr  # 20ms per frame (matches hop_length)
             
-            # Helper functions (same as crepe_processor.py)
+            # Helper functions (same as crepe_processor.py, now using FCPE)
             def freq_to_midi(freq):
                 if freq <= 0 or np.isnan(freq):
                     return 0
