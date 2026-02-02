@@ -280,7 +280,7 @@ class LyricsProcessor:
             periodicity = np.concatenate(all_periodicity)
             time = np.arange(len(pitch)) * 320 / sr  # 20ms per frame (matches hop_length)
             
-            # Helper functions (same as crepe_processor.py, now using FCPE)
+             # Helper functions (same as fcpe_processor.py, now using FCPE)
             def freq_to_midi(freq):
                 if freq <= 0 or np.isnan(freq):
                     return 0
@@ -955,6 +955,5 @@ class LyricsProcessor:
 
 
 
-# Singleton - keep old name as alias for backward compatibility
+# Singleton
 lyrics_processor = LyricsProcessor()
-whisper_processor = lyrics_processor  # backward compat alias

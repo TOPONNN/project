@@ -9,7 +9,7 @@ from src.config import TEMP_DIR
 from src.services.s3_service import s3_service
 
 
-class CrepeProcessor:
+class FcpeProcessor:
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.chunk_duration = 60  # seconds - larger chunks since small model uses less VRAM
@@ -140,4 +140,4 @@ class CrepeProcessor:
         }
 
 
-crepe_processor = CrepeProcessor()
+fcpe_processor = FcpeProcessor()
