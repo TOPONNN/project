@@ -333,6 +333,14 @@ const KeyboardShowcase = () => {
             ref={splineContainer}
             onLoad={(app: Application) => {
               setSplineApp(app);
+              try {
+                const renderer = (app as any)._renderer;
+                if (renderer && renderer.setPixelRatio) {
+                  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                }
+              } catch (e) {
+                // ignore
+              }
             }}
             scene="/assets/skills-keyboard.spline"
           />

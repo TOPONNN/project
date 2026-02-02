@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus } from "lucide-react";
+import SectionWrapper from "@/components/animations/SectionWrapper";
+import RevealAnimation from "@/components/animations/RevealAnimation";
 
 const FAQS = [
   { q: "어떤 기술스택을 사용했나요?", a: "WebRTC, LiveKit, Express.js, Redis, RabbitMQ, Socket.io, Redux, AWS S3, ELK Stack을 사용하고, AI는 Demucs, Whisper, CREPE를 Flask+Celery 워커로 처리합니다." },
@@ -18,12 +20,14 @@ export default function FAQ() {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
-    <section id="faq" className="w-full py-16 sm:py-24 md:py-32 bg-black px-6 md:px-20">
+    <SectionWrapper id="faq" className="w-full py-16 sm:py-24 md:py-32 bg-black px-6 md:px-20">
       <div className="max-w-4xl mx-auto">
-        <h2 className="mb-8 sm:mb-12 md:mb-20 text-2xl sm:text-3xl md:text-4xl font-bold text-white">FAQ</h2>
+        <RevealAnimation>
+          <h2 className="mb-8 sm:mb-12 md:mb-20 text-2xl sm:text-3xl md:text-4xl font-bold text-white">FAQ</h2>
+        </RevealAnimation>
         <div className="flex flex-col divide-y divide-white/10">
           {FAQS.map((faq, i) => (
-            <div key={i} className="py-6">
+            <RevealAnimation key={i} delay={i * 0.08} className="py-6">
               <button 
                 onClick={() => setOpenIndex(openIndex === i ? null : i)}
                 className="flex w-full items-center justify-between py-4 text-left"
@@ -48,10 +52,10 @@ export default function FAQ() {
                   </motion.div>
                 )}
               </AnimatePresence>
-            </div>
+            </RevealAnimation>
           ))}
         </div>
       </div>
-    </section>
+    </SectionWrapper>
   );
 }
