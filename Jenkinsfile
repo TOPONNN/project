@@ -2,8 +2,6 @@ pipeline {
     agent any
     
     environment {
-        GPU_SERVER = credentials('gpu-server-host')
-        GPU_SSH_KEY = '/var/lib/jenkins/.ssh/gpu_key'
     }
     
     stages {
@@ -39,32 +37,38 @@ pipeline {
         
         stage('Deploy GPU Server (AI Worker)') {
             steps {
-                sh '''
-                    # Sync ai-worker code to GPU server (excluding .env)
-                    rsync -avz --exclude=".env" -e "ssh -i ${GPU_SSH_KEY} -o StrictHostKeyChecking=accept-new" \
-                        /home/ubuntu/project/ai-worker/ ubuntu@${GPU_SERVER}:/data/kero/ai-worker/
-                    
-                    # Restart AI Worker on GPU server
-                    ssh -i ${GPU_SSH_KEY} -o StrictHostKeyChecking=accept-new ubuntu@${GPU_SERVER} '
-                        cd /data/kero/ai-worker
-                        
-                        # Rebuild and restart with Docker
-                        docker compose down || true
-                        docker compose up -d --build
-                        
-                        echo "Waiting for AI Worker to start..."
-                        sleep 20
-                        
-                        # Check if container is running
-                        if docker compose ps | grep -q "Up"; then
-                            echo "AI Worker is running"
-                            docker compose ps
-                        else
-                            echo "AI Worker startup logs:"
-                            docker compose logs --tail=20
-                        fi
-                    '
-                '''
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    withCredentials([string(credentialsId: 'gpu-server-host', variable: 'GPU_SERVER')]) {
+                        sh '''
+                            GPU_SSH_KEY="/var/lib/jenkins/.ssh/gpu_key"
+                            
+                            # Sync ai-worker code to GPU server (excluding .env)
+                            rsync -avz --exclude=".env" -e "ssh -i ${GPU_SSH_KEY} -o StrictHostKeyChecking=accept-new" \
+                                /home/ubuntu/project/ai-worker/ ubuntu@${GPU_SERVER}:/data/kero/ai-worker/
+                            
+                            # Restart AI Worker on GPU server
+                            ssh -i ${GPU_SSH_KEY} -o StrictHostKeyChecking=accept-new ubuntu@${GPU_SERVER} '
+                                cd /data/kero/ai-worker
+                                
+                                # Rebuild and restart with Docker
+                                docker compose down || true
+                                docker compose up -d --build
+                                
+                                echo "Waiting for AI Worker to start..."
+                                sleep 20
+                                
+                                # Check if container is running
+                                if docker compose ps | grep -q "Up"; then
+                                    echo "AI Worker is running"
+                                    docker compose ps
+                                else
+                                    echo "AI Worker startup logs:"
+                                    docker compose logs --tail=20
+                                fi
+                            '
+                        '''
+                    }
+                }
             }
         }
         
