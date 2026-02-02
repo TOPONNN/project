@@ -383,7 +383,7 @@ class LyricsProcessor:
                 })
             result = whisperx.align(
                 align_segments, model_a, metadata,
-                audio, self.device, return_char_alignments=False
+                audio, self.device, return_char_alignments=True
             )
             print(f"[WhisperX] Aligned {len(result.get('segments', []))} segments")
             del model_a
@@ -482,11 +482,15 @@ class LyricsProcessor:
             if word.get("start_time") is not None and word.get("end_time") is not None
         ]
         if not matched_indices:
+            char_counts = [max(1, self._count_chars(w["text"])) for w in word_timings]
+            total_chars = sum(char_counts)
             duration = max(line_end - line_start, 0.5)
-            step = duration / len(word_timings)
+            current = line_start
             for idx, word in enumerate(word_timings):
-                word["start_time"] = line_start + idx * step
-                word["end_time"] = line_start + (idx + 1) * step
+                word_dur = duration * (char_counts[idx] / total_chars)
+                word["start_time"] = current
+                word["end_time"] = current + word_dur
+                current += word_dur
             return
 
         first_idx = matched_indices[0]
@@ -494,11 +498,19 @@ class LyricsProcessor:
             start = line_start
             end = word_timings[first_idx]["start_time"]
             gap = first_idx
-            step = (end - start) / gap if gap else 0.0
+            char_counts = [
+                max(1, self._count_chars(word_timings[offset]["text"]))
+                for offset in range(gap)
+            ]
+            total_chars = sum(char_counts)
+            gap_duration = end - start
+            current = start
             for offset in range(gap):
                 word = word_timings[offset]
-                word["start_time"] = start + offset * step
-                word["end_time"] = start + (offset + 1) * step
+                word_dur = gap_duration * (char_counts[offset] / total_chars) if total_chars > 0 else 0.0
+                word["start_time"] = current
+                word["end_time"] = current + word_dur
+                current += word_dur
 
         for left_idx, right_idx in zip(matched_indices, matched_indices[1:]):
             gap = right_idx - left_idx - 1
@@ -506,22 +518,38 @@ class LyricsProcessor:
                 continue
             start = word_timings[left_idx]["end_time"]
             end = word_timings[right_idx]["start_time"]
-            step = (end - start) / gap if gap else 0.0
+            char_counts = [
+                max(1, self._count_chars(word_timings[left_idx + 1 + k]["text"]))
+                for k in range(gap)
+            ]
+            total_chars = sum(char_counts)
+            gap_duration = end - start
+            current = start
             for offset in range(gap):
                 word = word_timings[left_idx + 1 + offset]
-                word["start_time"] = start + offset * step
-                word["end_time"] = start + (offset + 1) * step
+                word_dur = gap_duration * (char_counts[offset] / total_chars) if total_chars > 0 else gap_duration / gap
+                word["start_time"] = current
+                word["end_time"] = current + word_dur
+                current += word_dur
 
         last_idx = matched_indices[-1]
         if last_idx < len(word_timings) - 1:
             start = word_timings[last_idx]["end_time"]
             end = line_end
             gap = len(word_timings) - 1 - last_idx
-            step = (end - start) / gap if gap else 0.0
+            char_counts = [
+                max(1, self._count_chars(word_timings[last_idx + 1 + offset]["text"]))
+                for offset in range(gap)
+            ]
+            total_chars = sum(char_counts)
+            gap_duration = end - start
+            current = start
             for offset in range(gap):
                 word = word_timings[last_idx + 1 + offset]
-                word["start_time"] = start + offset * step
-                word["end_time"] = start + (offset + 1) * step
+                word_dur = gap_duration * (char_counts[offset] / total_chars) if total_chars > 0 else 0.0
+                word["start_time"] = current
+                word["end_time"] = current + word_dur
+                current += word_dur
 
     def _enforce_monotonic(self, word_timings: List[Dict], min_word_dur: float, base_start: float) -> None:
         prev_end = base_start
@@ -535,6 +563,112 @@ class LyricsProcessor:
             word["start_time"] = start
             word["end_time"] = end
             prev_end = end
+
+    def _check_line_alignment_quality(self, word_timings: List[Dict], line_start: float, line_end: float) -> bool:
+        """Check if word-level alignment within a line is reasonable.
+        Returns True if quality is acceptable, False if redistribution needed."""
+        if not word_timings or len(word_timings) <= 1:
+            return True
+
+        line_duration = max(line_end - line_start, 0.5)
+        total_syllables = sum(max(1, self._count_chars(w["text"])) for w in word_timings)
+
+        for word in word_timings:
+            duration = word["end_time"] - word["start_time"]
+            syllables = max(1, self._count_chars(word["text"]))
+            expected = line_duration * (syllables / total_syllables)
+
+            if expected > 0.01:
+                ratio = duration / expected
+                # Word takes 3x more or 5x less time than expected by syllable count
+                if ratio > 3.0 or ratio < 0.2:
+                    return False
+
+        # Also check: any word with less than 80ms per syllable
+        for word in word_timings:
+            duration = word["end_time"] - word["start_time"]
+            syllables = max(1, self._count_chars(word["text"]))
+            if duration < syllables * 0.08:
+                return False
+
+        return True
+
+    def _redistribute_words_proportional(self, word_timings: List[Dict], line_start: float, line_end: float) -> None:
+        """Redistribute ALL words in a line proportionally by syllable count."""
+        if not word_timings:
+            return
+
+        total_syllables = sum(max(1, self._count_chars(w["text"])) for w in word_timings)
+        duration = max(line_end - line_start, 0.5)
+
+        current_time = line_start
+        for word in word_timings:
+            syllables = max(1, self._count_chars(word["text"]))
+            word_duration = duration * (syllables / total_syllables)
+            word["start_time"] = round(current_time, 3)
+            word["end_time"] = round(current_time + word_duration, 3)
+            current_time += word_duration
+
+    def _refine_with_energy_onsets(self, segments: List[Dict], vocals_path: str) -> List[Dict]:
+        """Post-process: snap word start times to actual vocal energy onsets."""
+        try:
+            print(f"[Refine] Loading vocals for energy onset detection...")
+            y, sr = librosa.load(vocals_path, sr=16000)
+
+            # Compute onset times using librosa
+            onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=256)
+            onset_frames = librosa.onset.onset_detect(
+                onset_envelope=onset_env, sr=sr, hop_length=256,
+                backtrack=True, units='frames'
+            )
+            onset_times = librosa.frames_to_time(onset_frames, sr=sr, hop_length=256)
+
+            # Compute RMS for silence detection
+            rms = librosa.feature.rms(y=y, frame_length=1024, hop_length=256)[0]
+            rms_times = librosa.times_like(rms, sr=sr, hop_length=256)
+
+            # Silence threshold: frames below 5% of max RMS are silence
+            rms_max = float(rms.max()) if len(rms) > 0 else 1.0
+            silence_threshold = rms_max * 0.05
+
+            tolerance = 0.15  # ±150ms snap window
+            total_snapped = 0
+            total_words = 0
+
+            for segment in segments:
+                words = segment.get("words", [])
+                line_start = segment["start_time"]
+                line_end = segment["end_time"]
+
+                for i, word in enumerate(words):
+                    total_words += 1
+                    start = word["start_time"]
+
+                    # Find nearest onset within tolerance
+                    if len(onset_times) > 0:
+                        diffs = np.abs(onset_times - start)
+                        min_idx = np.argmin(diffs)
+                        if diffs[min_idx] <= tolerance:
+                            new_start = float(onset_times[min_idx])
+                            # Don't snap before line start or before previous word's end
+                            prev_end = words[i - 1]["end_time"] if i > 0 else line_start
+                            if new_start >= prev_end:
+                                word["start_time"] = round(new_start, 3)
+                                total_snapped += 1
+
+                # After snapping starts, adjust end times to be seamless
+                for i in range(len(words) - 1):
+                    words[i]["end_time"] = words[i + 1]["start_time"]
+                # Last word ends at line end
+                if words:
+                    words[-1]["end_time"] = round(line_end, 3)
+
+            print(f"[Refine] Snapped {total_snapped}/{total_words} word starts to energy onsets")
+            return segments
+
+        except Exception as e:
+            print(f"[Refine] Energy onset refinement failed: {e}")
+            return segments
 
     def _map_lines_to_audio(self, lyrics_text: str, whisperx_segments: List[Dict]) -> List[Dict]:
         """Map API lyric lines to audio timing using DP syllable alignment."""
@@ -780,8 +914,26 @@ class LyricsProcessor:
                 line_end = line_start + 15.0
 
             if word_timings:
+                # Step A: Detect badly-aligned words (too short for their syllable count)
+                # and nullify them so they get redistributed
+                for wt in word_timings:
+                    if wt["start_time"] is not None and wt["end_time"] is not None:
+                        dur = wt["end_time"] - wt["start_time"]
+                        syllables = max(1, self._count_chars(wt["text"]))
+                        min_expected = syllables * 0.08  # 80ms per syllable
+                        if dur < min_expected:
+                            wt["start_time"] = None
+                            wt["end_time"] = None
+
+                # Step B: Interpolate unmatched words (proportional)
                 self._interpolate_unmatched_words(word_timings, line_start, line_end)
                 self._enforce_monotonic(word_timings, min_word_dur, line_start)
+
+                # Step C: Check overall line alignment quality
+                if not self._check_line_alignment_quality(word_timings, line_start, line_end):
+                    # Full proportional redistribution for poorly-aligned lines
+                    self._redistribute_words_proportional(word_timings, line_start, line_end)
+
                 for word in word_timings:
                     word["start_time"] = round(float(word["start_time"]), 3)
                     word["end_time"] = round(float(word["end_time"]), 3)
@@ -923,6 +1075,15 @@ class LyricsProcessor:
         # Clean lyrics
         lyrics_lines = self._clean_lyrics(lyrics_lines, detected_language)
         print(f"[Clean] {len(lyrics_lines)} lines after cleaning")
+
+        # ==============================================================
+        # Stage 5: Energy onset refinement (snap word starts to audio)
+        # ==============================================================
+        print("=" * 60)
+        print("[Stage 5: Refine] Snapping word times to energy onsets...")
+        print("=" * 60)
+
+        lyrics_lines = self._refine_with_energy_onsets(lyrics_lines, audio_path)
 
         # ==============================================================
         # Stage 6: Energy analysis
