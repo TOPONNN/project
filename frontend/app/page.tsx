@@ -8,6 +8,8 @@ import Footer from "@/components/Footer";
 import Header from "@/components/Header";
 import AnimatedBackground from "@/components/3d/AnimatedBackground";
 import SkillsSection from "@/components/3d/SkillsSection";
+import ArchitectureSection from "@/components/ArchitectureSection";
+import FeaturesSection from "@/components/FeaturesSection";
 import SmoothScroll from "@/components/animations/SmoothScroll";
 import Particles from "@/components/effects/Particles";
 import ShootingStars from "@/components/effects/ShootingStars";
@@ -28,8 +30,10 @@ export default function Home() {
           <HeroSection />
         </section>
         <TeamMarquee />
-        <SkillsSection />
-        <HighlightCTA />
+         <SkillsSection />
+         <ArchitectureSection />
+         <FeaturesSection />
+         <HighlightCTA />
         <FAQ />
         <Footer />
       </main>
