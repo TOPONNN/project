@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Users, X } from "lucide-react";
 import { usePresence } from "@/components/PresenceProvider";
@@ -16,6 +16,27 @@ const avatarGradients = [
 export default function OnlineIndicator() {
   const onlineData = usePresence();
   const [expanded, setExpanded] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel || !expanded) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.stopPropagation();
+      const target = e.currentTarget as HTMLElement;
+      const { scrollTop, scrollHeight, clientHeight } = target;
+      const atTop = scrollTop === 0;
+      const atBottom = scrollTop + clientHeight >= scrollHeight - 1;
+      
+      if ((atTop && e.deltaY < 0) || (atBottom && e.deltaY > 0)) {
+        e.preventDefault();
+      }
+    };
+
+    panel.addEventListener('wheel', handleWheel, { passive: false });
+    return () => panel.removeEventListener('wheel', handleWheel);
+  }, [expanded]);
 
   const getPageName = (path: string) => {
     if (path === '/') return '메인';
@@ -90,9 +111,9 @@ export default function OnlineIndicator() {
               </button>
             </div>
              <div 
-              className="max-h-64 overflow-y-auto p-2 space-y-1" 
+              ref={panelRef}
+              className="max-h-64 overflow-y-auto p-2 space-y-1 overscroll-contain" 
               data-scroll-container
-              onWheel={(e) => e.stopPropagation()}
               onTouchMove={(e) => e.stopPropagation()}
             >
               {onlineData.users.map((user, i) => (

@@ -32,7 +32,7 @@ export default function Home() {
           <section id="hero">
             <HeroSection />
           </section>
-          <section id="keyboard-intro" className="relative h-[150vh]">
+          <section id="keyboard-intro" className="relative h-screen">
             <div className="absolute bottom-0 left-0 right-0">
               <TeamMarquee />
             </div>
