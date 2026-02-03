@@ -71,16 +71,18 @@ export default function HeroSection() {
         setHasExitedHero(true);
       }
       
-      if (hasExitedHeroRef.current && scrollingUp && scroll < heroHeight * 1.15) {
+      if (hasExitedHeroRef.current && scrollingUp && scroll < heroHeight * 1.3) {
         isSnapping = true;
         hasExitedHeroRef.current = false;
         setActiveMode(0);
         setIsReadyToScroll(false);
-        lenis.scrollTo(0, { duration: 0.5 });
-        setTimeout(() => {
-          setHasExitedHero(false);
-          isSnapping = false;
-        }, 600);
+        lenis.scrollTo(0, { 
+          duration: 0.5,
+          onComplete: () => {
+            setHasExitedHero(false);
+            isSnapping = false;
+          }
+        });
       }
       
       if (scroll <= 0) {
