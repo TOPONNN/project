@@ -43,7 +43,7 @@ export const SKILLS: Record<SkillNames, Skill> = {
     name: "js",
     label: "WebRTC",
     shortDescription: "실시간 P2P 미디어 스트리밍의 핵심 — 초저지연 음성/영상 통신",
-    color: "#f0db4f",
+    color: "#3287F5",
     icon: "",
   },
   [SkillNames.TS]: {
@@ -51,7 +51,7 @@ export const SKILLS: Record<SkillNames, Skill> = {
     name: "ts",
     label: "TypeScript",
     shortDescription: "프론트엔드와 백엔드 모두 타입 안전하게 — 버그를 미리 잡는 조력자",
-    color: "#007acc",
+    color: "#3178C6",
     icon: "",
   },
   [SkillNames.HTML]: {
@@ -59,7 +59,7 @@ export const SKILLS: Record<SkillNames, Skill> = {
     name: "html",
     label: "LiveKit",
     shortDescription: "WebRTC 기반 화상·음성 서버 — 노래방 실시간 스트리밍의 심장",
-    color: "#e34c26",
+    color: "#00D084",
     icon: "",
   },
   [SkillNames.CSS]: {
@@ -99,7 +99,7 @@ export const SKILLS: Record<SkillNames, Skill> = {
     name: "tailwind",
     label: "Tailwind CSS",
     shortDescription: "유틸리티 클래스로 빠르게 스타일링 — 다크 테마 UI의 비밀",
-    color: "#38bdf8",
+    color: "#06B6D4",
     icon: "",
   },
   [SkillNames.NODEJS]: {
@@ -107,7 +107,7 @@ export const SKILLS: Record<SkillNames, Skill> = {
     name: "nodejs",
     label: "Node.js",
     shortDescription: "백엔드 런타임 — Express 서버와 실시간 처리의 기반",
-    color: "#6cc24a",
+    color: "#68A063",
     icon: "",
   },
   [SkillNames.EXPRESS]: {
@@ -147,7 +147,7 @@ export const SKILLS: Record<SkillNames, Skill> = {
     name: "github",
     label: "Celery",
     shortDescription: "Python 비동기 작업 큐 — GPU 서버에서 AI 작업을 분산 처리",
-    color: "#37814A",
+    color: "#37B24D",
     icon: "",
   },
   [SkillNames.PRETTIER]: {
@@ -163,7 +163,7 @@ export const SKILLS: Record<SkillNames, Skill> = {
     name: "npm",
     label: "Framer Motion",
     shortDescription: "부드러운 애니메이션 라이브러리 — 페이지 전환과 인터랙션 담당",
-    color: "#FF0055",
+    color: "#0055FF",
     icon: "",
   },
   [SkillNames.FIREBASE]: {
@@ -179,7 +179,7 @@ export const SKILLS: Record<SkillNames, Skill> = {
     name: "wordpress",
     label: "WhisperX + SOFA",
     shortDescription: "음성 인식 + 강제 정렬 — 가사 추출 후 음절 단위 싱크 생성",
-    color: "#74AA9C",
+    color: "#FF6B6B",
     icon: "",
   },
   [SkillNames.LINUX]: {
@@ -187,7 +187,7 @@ export const SKILLS: Record<SkillNames, Skill> = {
     name: "linux",
     label: "Linux",
     shortDescription: "Ubuntu 서버 — 모든 서비스가 돌아가는 안정적인 운영 체제",
-    color: "#fff",
+    color: "#FCC624",
     icon: "",
   },
   [SkillNames.DOCKER]: {
@@ -219,7 +219,7 @@ export const SKILLS: Record<SkillNames, Skill> = {
     name: "gcp",
     label: "ELK Stack",
     shortDescription: "Elasticsearch + Logstash + Kibana — 로그 수집·분석·시각화",
-    color: "#F4BD19",
+    color: "#005571",
     icon: "",
   },
   [SkillNames.VIM]: {
@@ -227,7 +227,7 @@ export const SKILLS: Record<SkillNames, Skill> = {
     name: "vim",
     label: "Mel-band Roformer",
     shortDescription: "최신 음원 분리 AI — 노래에서 보컬과 MR을 고품질로 분리",
-    color: "#0668E1",
+    color: "#4A90E2",
     icon: "",
   },
   [SkillNames.VERCEL]: {
@@ -235,7 +235,7 @@ export const SKILLS: Record<SkillNames, Skill> = {
     name: "vercel",
     label: "FCPE",
     shortDescription: "실시간 음정 분석 AI — 빠르고 정확한 F0 추출로 노래 점수 계산",
-    color: "#6cc24a",
+    color: "#FF6B35",
     icon: "",
   },
 };
