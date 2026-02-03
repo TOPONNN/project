@@ -50,7 +50,6 @@ const FeaturesSection = () => {
       id="features"
       className="md:h-[130vh] py-16 sm:py-24 md:py-32 px-6 md:px-20 relative z-10"
     >
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm -z-10" />
       <div className="max-w-6xl mx-auto relative z-10">
         {/* Header */}
         <RevealAnimation>
@@ -69,7 +68,7 @@ const FeaturesSection = () => {
           {FEATURES.map((feature, i) => (
             <RevealAnimation key={i} delay={i * 0.1}>
               <div 
-                className="group relative h-full rounded-2xl border border-white/10 bg-white/5 p-6 md:p-8 transition-all duration-500 hover:border-white/20 hover:bg-white/[0.08] hover:-translate-y-2 overflow-hidden"
+                className="group relative h-full rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-6 md:p-8 transition-all duration-500 hover:border-white/20 hover:bg-white/[0.08] hover:-translate-y-2 overflow-hidden"
               >
                 {/* Glow Effect on Hover */}
                 <div 
