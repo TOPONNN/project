@@ -13,6 +13,7 @@ import { Skill, SkillNames, SKILLS } from "./constants";
 import { sleep } from "@/lib/utils";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useSounds } from "@/hooks/use-sounds";
+import { usePreloader } from "@/hooks/use-preloader";
 import { Section, getKeyboardState } from "./animated-background-config";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -23,6 +24,7 @@ const AnimatedBackground = () => {
   const selectedSkillRef = React.useRef<Skill | null>(null);
 
   const { playPressSound, playReleaseSound } = useSounds();
+  const { isLoading, bypassLoading } = usePreloader();
 
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [activeSection, setActiveSection] = useState<Section>("hero");
@@ -427,10 +429,10 @@ const AnimatedBackground = () => {
   }, [activeSection, bongoAnimation, keycapAnimations, splineApp]);
 
   useEffect(() => {
-    if (!splineApp || keyboardRevealed) return;
+    if (!splineApp || keyboardRevealed || isLoading) return;
     setKeyboardRevealed(true);
     revealKeyboard();
-  }, [splineApp, keyboardRevealed, isMobile]);
+  }, [splineApp, keyboardRevealed, isMobile, isLoading]);
 
   return (
     <Suspense fallback={<div>Loading...</div>}>
@@ -438,6 +440,7 @@ const AnimatedBackground = () => {
         className="w-full h-full fixed inset-0"
         onLoad={(app: Application) => {
           setSplineApp(app);
+          bypassLoading();
           try {
             const renderer = (app as any)._renderer;
             if (renderer && renderer.setPixelRatio) {

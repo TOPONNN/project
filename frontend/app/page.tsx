@@ -13,32 +13,35 @@ import FeaturesSection from "@/components/FeaturesSection";
 import SmoothScroll from "@/components/animations/SmoothScroll";
 import Particles from "@/components/effects/Particles";
 import ShootingStars from "@/components/effects/ShootingStars";
-import ElasticCursor from "@/components/effects/ElasticCursor";
 import RadialMenu from "@/components/effects/RadialMenu";
+import { PreloaderProvider } from "@/hooks/use-preloader";
+import Preloader from "@/components/Preloader";
 
 export default function Home() {
   return (
     <SmoothScroll>
-      <div className="fixed inset-0 -z-10">
-        <Particles className="absolute inset-0" quantity={100} />
-        <ShootingStars />
-      </div>
-      <AnimatedBackground />
-      <main className="relative z-10 min-h-screen text-white selection:bg-[#C0C0C0] selection:text-black">
-        <Header />
-        <section id="hero">
-          <HeroSection />
-        </section>
-        <TeamMarquee />
-         <SkillsSection />
-         <ArchitectureSection />
-         <FeaturesSection />
-         <HighlightCTA />
-        <FAQ />
-        <Footer />
-      </main>
-      <ElasticCursor />
-      <RadialMenu />
+      <PreloaderProvider>
+        <div className="fixed inset-0 -z-10">
+          <Particles className="absolute inset-0" quantity={100} />
+          <ShootingStars />
+        </div>
+        <AnimatedBackground />
+        <Preloader />
+        <main className="relative z-10 min-h-screen text-white selection:bg-[#C0C0C0] selection:text-black">
+          <Header />
+          <section id="hero">
+            <HeroSection />
+          </section>
+          <TeamMarquee />
+          <SkillsSection />
+          <ArchitectureSection />
+          <FeaturesSection />
+          <HighlightCTA />
+          <FAQ />
+           <Footer />
+         </main>
+         <RadialMenu />
+      </PreloaderProvider>
     </SmoothScroll>
   );
 }
