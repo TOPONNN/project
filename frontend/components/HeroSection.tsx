@@ -56,49 +56,27 @@ export default function HeroSection() {
   const scale = useTransform(scrollYProgress, [0, 1], [1, 1.2]);
 
   useEffect(() => {
-    let lastScrollY = window.scrollY;
-    let isSnapping = false;
-    
     const handleScroll = () => {
-      if (isSnapping) return;
-      
       const heroHeight = containerRef.current?.offsetHeight || window.innerHeight;
       const currentScrollY = window.scrollY;
-      const scrollingUp = currentScrollY < lastScrollY;
       
+      // Hero를 벗어나면 hasExitedHero = true (Lenis 활성화)
       if (currentScrollY > heroHeight * 0.5 && !hasExitedHeroRef.current) {
         hasExitedHeroRef.current = true;
         setHasExitedHero(true);
       }
       
-      if (hasExitedHeroRef.current && scrollingUp) {
-        const inKeyboardIntroZone = currentScrollY < heroHeight * 1.5;
-        
-        if (inKeyboardIntroZone) {
-          isSnapping = true;
-          hasExitedHeroRef.current = false;
-          setHasExitedHero(false);
-          setActiveMode(0);
-          setIsReadyToScroll(false);
-          if (lenis) {
-            lenis.scrollTo(0, { duration: 0.5 });
-          }
-          setTimeout(() => { isSnapping = false; }, 600);
-        }
-      }
-      
+      // 맨 위로 돌아오면 상태 리셋
       if (currentScrollY === 0) {
         hasExitedHeroRef.current = false;
         setHasExitedHero(false);
         setActiveMode(0);
         setIsReadyToScroll(false);
       }
-      
-      lastScrollY = currentScrollY;
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [lenis]);
+  }, []);
 
   useEffect(() => {
     if (!lenis) return;
