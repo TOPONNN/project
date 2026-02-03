@@ -143,12 +143,42 @@ export default function HeroSection() {
     }
   }, [hasExitedHero, activeMode, isReadyToScroll, scrollToContent]);
 
-  useEffect(() => {
-    window.addEventListener('wheel', handleWheel, { passive: false, capture: true });
-    return () => window.removeEventListener('wheel', handleWheel, { capture: true });
-  }, [handleWheel]);
+   useEffect(() => {
+     window.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+     return () => window.removeEventListener('wheel', handleWheel, { capture: true });
+   }, [handleWheel]);
 
-  const currentMode = modes[activeMode];
+   useEffect(() => {
+     const handleKeyboardIntroWheel = (e: WheelEvent) => {
+       if (!hasExitedHero) return;
+       
+       const heroHeight = containerRef.current?.offsetHeight || window.innerHeight;
+       const scrollY = window.scrollY;
+       
+       if (scrollY > 0 && scrollY < heroHeight + 200) {
+         if (e.deltaY < 0) {
+           const now = Date.now();
+           if (now - lastScrollTime.current < 500) return;
+           lastScrollTime.current = now;
+           
+           e.preventDefault();
+           
+           setActiveMode(0);
+           setHasExitedHero(false);
+           setIsReadyToScroll(false);
+           
+           if (lenis) {
+             lenis.scrollTo(0, { duration: 0.8 });
+           }
+         }
+       }
+     };
+     
+     window.addEventListener('wheel', handleKeyboardIntroWheel, { passive: false });
+     return () => window.removeEventListener('wheel', handleKeyboardIntroWheel);
+   }, [hasExitedHero, lenis]);
+
+   const currentMode = modes[activeMode];
   const Icon = currentMode.icon;
 
   return (
