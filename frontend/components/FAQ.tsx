@@ -22,7 +22,7 @@ export default function FAQ() {
   return (
     <SectionWrapper id="faq" className="w-full py-16 sm:py-24 md:py-32 px-6 md:px-20">
       <div className="max-w-4xl mx-auto">
-        <div className="sticky top-[70px] z-20 mb-20">
+        <div className="mb-8">
           <RevealAnimation>
             <h2 className="text-4xl text-center md:text-7xl font-bold text-white">FAQ</h2>
           </RevealAnimation>

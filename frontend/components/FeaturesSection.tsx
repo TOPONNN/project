@@ -53,7 +53,7 @@ const FeaturesSection = () => {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <RevealAnimation>
-          <div className="sticky top-[70px] z-20 mb-96">
+          <div className="mb-8 md:mb-12">
             <h2 className="text-4xl text-center md:text-7xl font-bold text-white">
               Features
             </h2>

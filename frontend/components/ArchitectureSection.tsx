@@ -71,7 +71,7 @@ const ArchitectureSection = () => {
     <SectionWrapper id="architecture" className="min-h-[120vh] py-16 sm:py-24 md:py-32">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="sticky top-[70px] z-20 mb-96">
+        <div className="mb-8 md:mb-12">
           <RevealAnimation>
             <h2 className="text-4xl text-center font-bold text-white md:text-7xl">
               Architecture
