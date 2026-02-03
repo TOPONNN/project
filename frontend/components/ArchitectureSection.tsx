@@ -43,9 +43,9 @@ const architectureLayers = [
     techs: [
       { name: "Flask", desc: "Model Serving" },
       { name: "Celery", desc: "Task Management" },
-      { name: "Demucs", desc: "Vocal Separation" },
-      { name: "Whisper", desc: "Lyrics Alignment" },
-      { name: "CREPE", desc: "Pitch Analysis" },
+      { name: "Mel-band Roformer", desc: "Vocal Separation" },
+      { name: "WhisperX + SOFA", desc: "Lyrics Alignment" },
+      { name: "FCPE", desc: "Pitch Analysis" },
     ],
   },
 ];

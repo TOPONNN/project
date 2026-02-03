@@ -18,14 +18,14 @@ export enum SkillNames {
   PRETTIER = "prettier", // → Jenkins
   NPM = "npm",           // → Framer Motion
   FIREBASE = "firebase", // → Flask
-  WORDPRESS = "wordpress", // → Whisper AI
+  WORDPRESS = "wordpress", // → WhisperX + SOFA
   LINUX = "linux",     // → Linux (일치)
   DOCKER = "docker",   // → Docker (일치)
   NGINX = "nginx",     // → Nginx (일치)
   AWS = "aws",         // → AWS S3 (일치)
   GCP = "gcp",         // → ELK Stack
-  VIM = "vim",         // → Demucs
-  VERCEL = "vercel",   // → CREPE
+  VIM = "vim",         // → Mel-band Roformer
+  VERCEL = "vercel",   // → FCPE
 }
 
 export type Skill = {
@@ -177,8 +177,8 @@ export const SKILLS: Record<SkillNames, Skill> = {
   [SkillNames.WORDPRESS]: {
     id: 18,
     name: "wordpress",
-    label: "Whisper AI",
-    shortDescription: "OpenAI 음성 인식 — 노래에서 가사를 자동으로 추출",
+    label: "WhisperX + SOFA",
+    shortDescription: "음성 인식 + 강제 정렬 — 가사 추출 후 음절 단위 싱크 생성",
     color: "#74AA9C",
     icon: "",
   },
@@ -225,16 +225,16 @@ export const SKILLS: Record<SkillNames, Skill> = {
   [SkillNames.VIM]: {
     id: 24,
     name: "vim",
-    label: "Demucs",
-    shortDescription: "Meta AI 음원 분리 — 노래에서 보컬과 MR을 자동으로 분리",
+    label: "Mel-band Roformer",
+    shortDescription: "최신 음원 분리 AI — 노래에서 보컬과 MR을 고품질로 분리",
     color: "#0668E1",
     icon: "",
   },
   [SkillNames.VERCEL]: {
     id: 25,
     name: "vercel",
-    label: "CREPE",
-    shortDescription: "실시간 음정 분석 AI — 노래 점수를 계산하는 핵심 모델",
+    label: "FCPE",
+    shortDescription: "실시간 음정 분석 AI — 빠르고 정확한 F0 추출로 노래 점수 계산",
     color: "#6cc24a",
     icon: "",
   },

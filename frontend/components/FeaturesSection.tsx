@@ -15,19 +15,19 @@ const FEATURES = [
   {
     icon: Target,
     title: "AI 음정 분석",
-    description: "CREPE 모델이 실시간으로 음정을 분석하고 점수를 계산합니다. 퍼펙트 스코어에 도전하세요!",
+    description: "FCPE 모델이 실시간으로 음정을 분석하고 점수를 계산합니다. 퍼펙트 스코어에 도전하세요!",
     accent: "#FFD700", // Gold
   },
   {
     icon: Mic,
     title: "보컬 분리",
-    description: "Demucs AI가 원곡에서 보컬과 MR을 자동으로 분리합니다. 어떤 노래든 MR로 만들 수 있습니다.",
+    description: "Mel-band Roformer가 원곡에서 보컬과 MR을 고품질로 분리합니다. 어떤 노래든 MR로 만들 수 있습니다.",
     accent: "#FF6B6B", // Red/Coral
   },
   {
     icon: FileText,
     title: "가사 자동 추출",
-    description: "Whisper AI가 노래에서 가사를 자동으로 인식하고 타임스탬프와 함께 표시합니다.",
+    description: "WhisperX + SOFA가 노래에서 가사를 인식하고 음절 단위로 정확하게 싱크합니다.",
     accent: "#74AA9C", // Teal
   },
   {
