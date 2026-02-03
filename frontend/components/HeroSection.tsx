@@ -157,10 +157,10 @@ export default function HeroSection() {
       const handleLenisScroll = ({ scroll, direction }: { scroll: number; direction: number }) => {
         if (isSnapping) return;
         
-        const inKeyboardIntro = scroll > heroHeight * 0.3 && scroll < heroHeight * 1.8;
+        const nearSkipToContentLanding = scroll > heroHeight * 0.8 && scroll < heroHeight * 1.15;
         const scrollingUp = direction === -1;
         
-        if (inKeyboardIntro && scrollingUp) {
+        if (nearSkipToContentLanding && scrollingUp) {
           isSnapping = true;
           setActiveMode(0);
           setHasExitedHero(false);
