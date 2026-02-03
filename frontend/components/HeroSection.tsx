@@ -71,16 +71,21 @@ export default function HeroSection() {
           hasExitedHeroRef.current = true;
           setHasExitedHero(true);
         }
-      } else if (hasExitedHeroRef.current && scrollingUp && currentScrollY < heroHeight * 0.4) {
-        isSnapping = true;
-        hasExitedHeroRef.current = false;
-        setHasExitedHero(false);
-        setActiveMode(0);
-        setIsReadyToScroll(false);
-        if (lenis) {
-          lenis.scrollTo(0, { duration: 0.5 });
+      } else if (hasExitedHeroRef.current && scrollingUp) {
+        const inKeyboardIntroZone = currentScrollY > heroHeight * 0.5 && currentScrollY < heroHeight * 1.3;
+        const inHeroSnapZone = currentScrollY < heroHeight * 0.4;
+        
+        if (inKeyboardIntroZone || inHeroSnapZone) {
+          isSnapping = true;
+          hasExitedHeroRef.current = false;
+          setHasExitedHero(false);
+          setActiveMode(0);
+          setIsReadyToScroll(false);
+          if (lenis) {
+            lenis.scrollTo(0, { duration: 0.5 });
+          }
+          setTimeout(() => { isSnapping = false; }, 600);
         }
-        setTimeout(() => { isSnapping = false; }, 600);
       } else if (currentScrollY === 0) {
         hasExitedHeroRef.current = false;
         setHasExitedHero(false);

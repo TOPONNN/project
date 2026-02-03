@@ -4,6 +4,7 @@ import PresenceProvider from "@/components/PresenceProvider";
 import { ReduxProvider } from "@/store/provider";
 import { Toaster } from "sonner";
 import ElasticCursor from "@/components/effects/ElasticCursor";
+import RemoteCursors from "@/components/effects/RemoteCursors";
 import "./globals.css";
 
 const archivoBlack = Archivo_Black({
@@ -27,6 +28,7 @@ export default function RootLayout({
     <html lang="en" className={archivoBlack.variable}>
       <body className="antialiased">
         <PresenceProvider>
+          <RemoteCursors />
           <ReduxProvider>{children}</ReduxProvider>
         </PresenceProvider>
         <Toaster 
