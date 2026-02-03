@@ -75,25 +75,39 @@ export function initializeSocket(httpServer: HttpServer): Server {
          }
        });
 
-       socket.on("cursor:move", (data: { x: number; y: number }) => {
-         const user = onlineUsers.get(socket.id);
-         if (user) {
-           user.posX = data.x;
-           user.posY = data.y;
-           socket.broadcast.emit("cursor:update", {
-             socketId: socket.id,
-             nickname: user.nickname,
-             profileImage: user.profileImage,
-             currentPage: user.currentPage,
-             connectedAt: user.connectedAt,
-             posX: data.x,
-             posY: data.y,
-             color: user.color,
-           });
-         }
-       });
+        socket.on("cursor:move", (data: { x: number; y: number }) => {
+          const user = onlineUsers.get(socket.id);
+          if (user) {
+            user.posX = data.x;
+            user.posY = data.y;
+            socket.broadcast.emit("cursor:update", {
+              socketId: socket.id,
+              nickname: user.nickname,
+              profileImage: user.profileImage,
+              currentPage: user.currentPage,
+              connectedAt: user.connectedAt,
+              posX: data.x,
+              posY: data.y,
+              color: user.color,
+            });
+          }
+        });
 
-      socket.on("room:join", async (data: JoinRoomData) => {
+        socket.on("emoji:send", (data: { emoji: string; x: number; y: number }) => {
+          const user = onlineUsers.get(socket.id);
+          if (user) {
+            socket.broadcast.emit("emoji:broadcast", {
+              socketId: socket.id,
+              nickname: user.nickname,
+              color: user.color,
+              emoji: data.emoji,
+              x: data.x,
+              y: data.y,
+            });
+          }
+        });
+
+       socket.on("room:join", async (data: JoinRoomData) => {
       try {
         const room = await roomService.getRoomByCode(data.code);
         if (!room) {

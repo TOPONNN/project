@@ -72,10 +72,9 @@ export default function HeroSection() {
       }
       
       if (hasExitedHeroRef.current && scrollingUp) {
-        const inKeyboardIntroZone = currentScrollY > heroHeight * 0.3 && currentScrollY < heroHeight * 1.3;
-        const inHeroSnapZone = currentScrollY < heroHeight * 0.4;
+        const inKeyboardIntroZone = currentScrollY < heroHeight * 1.5;
         
-        if (inKeyboardIntroZone || inHeroSnapZone) {
+        if (inKeyboardIntroZone) {
           isSnapping = true;
           hasExitedHeroRef.current = false;
           setHasExitedHero(false);
