@@ -56,45 +56,48 @@ export default function HeroSection() {
   const scale = useTransform(scrollYProgress, [0, 1], [1, 1.2]);
 
   useEffect(() => {
-    if (!lenis) return;
-    
+    let lastScrollY = window.scrollY;
     let isSnapping = false;
     
-    const handleLenisScroll = ({ scroll, direction }: { scroll: number; direction: number }) => {
+    const handleScroll = () => {
       if (isSnapping) return;
       
       const heroHeight = containerRef.current?.offsetHeight || window.innerHeight;
-      const scrollingUp = direction === -1;
+      const currentScrollY = window.scrollY;
+      const scrollingUp = currentScrollY < lastScrollY;
       
-      if (scroll > heroHeight * 0.5 && !hasExitedHeroRef.current) {
+      if (currentScrollY > heroHeight * 0.5 && !hasExitedHeroRef.current) {
         hasExitedHeroRef.current = true;
         setHasExitedHero(true);
       }
       
-      if (hasExitedHeroRef.current && scrollingUp && scroll < heroHeight * 1.3) {
-        isSnapping = true;
-        hasExitedHeroRef.current = false;
-        setActiveMode(0);
-        setIsReadyToScroll(false);
-        lenis.scrollTo(0, { 
-          duration: 0.5,
-          onComplete: () => {
-            setHasExitedHero(false);
-            isSnapping = false;
+      if (hasExitedHeroRef.current && scrollingUp) {
+        const inKeyboardIntroZone = currentScrollY < heroHeight * 1.5;
+        
+        if (inKeyboardIntroZone) {
+          isSnapping = true;
+          hasExitedHeroRef.current = false;
+          setHasExitedHero(false);
+          setActiveMode(0);
+          setIsReadyToScroll(false);
+          if (lenis) {
+            lenis.scrollTo(0, { duration: 0.5 });
           }
-        });
+          setTimeout(() => { isSnapping = false; }, 600);
+        }
       }
       
-      if (scroll <= 0) {
+      if (currentScrollY === 0) {
         hasExitedHeroRef.current = false;
         setHasExitedHero(false);
         setActiveMode(0);
         setIsReadyToScroll(false);
       }
+      
+      lastScrollY = currentScrollY;
     };
-    
-    lenis.on('scroll', handleLenisScroll);
-    return () => lenis.off('scroll', handleLenisScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
   }, [lenis]);
 
   useEffect(() => {
@@ -113,11 +116,11 @@ export default function HeroSection() {
 
   const scrollToContent = useCallback(() => {
     const heroHeight = containerRef.current?.offsetHeight || window.innerHeight;
-    hasExitedHeroRef.current = true;
-    setHasExitedHero(true);
     if (lenis) {
       lenis.start();
-      lenis.scrollTo(heroHeight, { duration: 1.2 });
+      setTimeout(() => {
+        lenis.scrollTo(heroHeight, { duration: 1.2 });
+      }, 50);
     } else {
       window.scrollTo({ top: heroHeight, behavior: 'smooth' });
     }
@@ -131,13 +134,9 @@ export default function HeroSection() {
      
      if (target.closest('[data-scroll-container]') || target.closest('[data-online-indicator]')) return;
      
-     if (hasExitedHero || window.innerWidth < 768) return;
+     if (hasExitedHero || window.scrollY > 10 || window.innerWidth < 768) return;
     
     e.preventDefault();
-    
-    if (window.scrollY > 0) {
-      window.scrollTo(0, 0);
-    }
     
     const isLastMode = activeMode === modes.length - 1;
     const isFirstMode = activeMode === 0;
