@@ -71,7 +71,7 @@ export default function HeroSection() {
         setHasExitedHero(true);
       }
       
-      if (hasExitedHeroRef.current && scrollingUp && scroll < heroHeight * 1.9) {
+      if (hasExitedHeroRef.current && scrollingUp && scroll < heroHeight * 1.15) {
         isSnapping = true;
         hasExitedHeroRef.current = false;
         setActiveMode(0);
@@ -129,7 +129,8 @@ export default function HeroSection() {
      
      if (target.closest('[data-scroll-container]') || target.closest('[data-online-indicator]')) return;
      
-     if (hasExitedHero || window.scrollY > 10 || window.innerWidth < 768) return;
+     const heroHeight = containerRef.current?.offsetHeight || window.innerHeight;
+     if (hasExitedHero || window.scrollY > heroHeight * 0.3 || window.innerWidth < 768) return;
     
     e.preventDefault();
     
