@@ -27,7 +27,7 @@ export default function Home() {
         </div>
         <AnimatedBackground />
         <Preloader />
-        <main className="relative z-10 min-h-screen text-white selection:bg-[#C0C0C0] selection:text-black">
+        <main className="relative z-10 min-h-screen text-white selection:bg-[#C0C0C0] selection:text-black canvas-overlay-mode">
           <Header />
           <section id="hero">
             <HeroSection />

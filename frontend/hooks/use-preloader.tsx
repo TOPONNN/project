@@ -22,6 +22,8 @@ export const usePreloader = () => {
 export const PreloaderProvider = ({ children }: { children: React.ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [loadingPercent, setLoadingPercent] = useState(0);
+  const [animationComplete, setAnimationComplete] = useState(false);
+  const [splineReady, setSplineReady] = useState(false);
   const loadingTween = useRef<gsap.core.Tween | null>(null);
   const percentRef = useRef({ value: 0 });
 
@@ -33,6 +35,9 @@ export const PreloaderProvider = ({ children }: { children: React.ReactNode }) =
       onUpdate: () => {
         setLoadingPercent(Math.round(percentRef.current.value));
       },
+      onComplete: () => {
+        setAnimationComplete(true);
+      },
     });
 
     return () => {
@@ -40,12 +45,15 @@ export const PreloaderProvider = ({ children }: { children: React.ReactNode }) =
     };
   }, []);
 
-  const bypassLoading = () => {
-    if (loadingTween.current) {
-      loadingTween.current.kill();
+  // Only dismiss when BOTH animation complete AND Spline loaded
+  useEffect(() => {
+    if (animationComplete && splineReady) {
+      setIsLoading(false);
     }
-    setLoadingPercent(100);
-    setIsLoading(false);
+  }, [animationComplete, splineReady]);
+
+  const bypassLoading = () => {
+    setSplineReady(true);
   };
 
   return (

@@ -46,3 +46,27 @@ body {
     cursor: none !important;
   }
 }
+
+/* Canvas overlay mode - allows mouse events to pass through to Spline canvas */
+.canvas-overlay-mode {
+  pointer-events: none;
+}
+
+.canvas-overlay-mode a,
+.canvas-overlay-mode button,
+.canvas-overlay-mode input,
+.canvas-overlay-mode label,
+.canvas-overlay-mode select,
+.canvas-overlay-mode textarea,
+.canvas-overlay-mode [role="button"],
+.canvas-overlay-mode p,
+.canvas-overlay-mode h1,
+.canvas-overlay-mode h2,
+.canvas-overlay-mode h3,
+.canvas-overlay-mode h4,
+.canvas-overlay-mode h5,
+.canvas-overlay-mode h6,
+.canvas-overlay-mode span,
+.canvas-overlay-mode svg {
+  pointer-events: auto;
+}
