@@ -105,17 +105,18 @@ export default function OnlineIndicator() {
         <span className="text-sm font-medium text-white/80">{onlineData.count}명 접속 중</span>
       </motion.div>
 
-       <AnimatePresence>
-         {expanded && (
-           <motion.div
-             ref={expandedPanelRef}
-             initial={{ opacity: 0, y: 10, scale: 0.95 }}
-             animate={{ opacity: 1, y: 0, scale: 1 }}
-             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-             className="absolute bottom-full right-0 mb-2 w-72 bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
-             onClick={(e) => e.stopPropagation()}
-             data-scroll-container
-           >
+        <AnimatePresence>
+          {expanded && (
+            <motion.div
+              ref={expandedPanelRef}
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              className="absolute bottom-full right-0 mb-2 w-72 bg-black/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+              data-scroll-container
+              data-online-indicator-expanded
+            >
             <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-white/60" />

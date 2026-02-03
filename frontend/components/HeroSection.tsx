@@ -104,11 +104,16 @@ export default function HeroSection() {
     window.scrollTo({ top: heroHeight, behavior: 'smooth' });
   };
 
-  const handleWheel = useCallback((e: WheelEvent) => {
-    const target = e.target as HTMLElement;
-    if (target.closest('[data-scroll-container]') || target.closest('[data-online-indicator]')) return;
-    
-    if (hasExitedHero || window.scrollY > 10 || window.innerWidth < 768) return;
+   const handleWheel = useCallback((e: WheelEvent) => {
+     const target = e.target as HTMLElement;
+     
+     // Check if OnlineIndicator panel is expanded
+     const onlineIndicatorExpanded = document.querySelector('[data-online-indicator-expanded]');
+     if (onlineIndicatorExpanded) return;
+     
+     if (target.closest('[data-scroll-container]') || target.closest('[data-online-indicator]')) return;
+     
+     if (hasExitedHero || window.scrollY > 10 || window.innerWidth < 768) return;
     
     const isLastMode = activeMode === modes.length - 1;
     const isFirstMode = activeMode === 0;
