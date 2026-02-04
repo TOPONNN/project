@@ -60,3 +60,6 @@ ai-worker/scripts/authorized_keys
 *.png
 !frontend/public/**/*.png
 verification_report.md
+
+# SOFA models (too large for git, deploy via SCP/S3)
+*.onnx
