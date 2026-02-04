@@ -3,11 +3,26 @@
 :root {
   --background: #020817;
   --foreground: #ededed;
+  
+  /* Game mode accent colors */
+  --color-normal: #C0C0C0;
+  --color-perfect: #FFD700;
+  --color-quiz: #FF6B6B;
+  
+  /* Glass effect tokens */
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-bg-hover: rgba(255, 255, 255, 0.1);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-normal: var(--color-normal);
+  --color-perfect: var(--color-perfect);
+  --color-quiz: var(--color-quiz);
+  --color-glass-bg: var(--glass-bg);
+  --color-glass-border: var(--glass-border);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-display: var(--font-archivo-black);
