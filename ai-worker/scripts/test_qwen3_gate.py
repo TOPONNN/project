@@ -24,7 +24,7 @@ import torch
 try:
     from qwen_asr import Qwen3ForcedAligner
 except ImportError:
-    print("ERROR: qwen-asr package not installed. Install with: pip install qwen-asr>=0.2.0")
+    print("ERROR: qwen-asr package not installed. Install with: pip install qwen-asr>=0.0.6")
     sys.exit(1)
 
 
