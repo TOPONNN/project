@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Users, Check, X, AlertCircle, Send, RotateCcw, ArrowLeft, Mic, MicOff, Video, CameraOff } from "lucide-react";
+import { Trophy, Users, Check, X, AlertCircle, Send, RotateCcw, ArrowLeft, Mic, MicOff, Video, CameraOff, Music, Loader2 } from "lucide-react";
 import type { RootState } from "@/store";
 import { selectAnswer, nextQuestion, revealAnswer, setGameStatus, updateStreak, resetQuiz, setQuizQuestions } from "@/store/slices/gameSlice";
 import { useSocket } from "@/hooks/useSocket";
@@ -101,7 +101,7 @@ export default function LyricsQuizGame({
    
    const [ordering, setOrdering] = useState<number[]>([]);
    const [textAnswer, setTextAnswer] = useState("");
-   const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null);
+   const [audioLoading, setAudioLoading] = useState(false);
    const [correctCount, setCorrectCount] = useState(0);
    const [wrongCount, setWrongCount] = useState(0);
    const [maxStreakLocal, setMaxStreakLocal] = useState(0);
@@ -173,10 +173,9 @@ export default function LyricsQuizGame({
     return () => clearInterval(timer);
   }, [currentQuestion, isAnswerRevealed, submitted, handleTimeUp]);
 
-  // Audio playback for title_guess / artist_guess questions
   useEffect(() => {
     if (!currentQuestion) {
-      setYoutubeVideoId(null);
+      setAudioLoading(false);
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
@@ -188,8 +187,7 @@ export default function LyricsQuizGame({
     const ytVideoId = currentQuestion.metadata?.youtubeVideoId;
     
     if (audioUrl) {
-      // DB song with direct audio URL
-      setYoutubeVideoId(null);
+      setAudioLoading(false);
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
       const startTime = currentQuestion.metadata?.audioStartTime || 0;
@@ -203,19 +201,31 @@ export default function LyricsQuizGame({
         audioRef.current = null;
       };
     } else if (ytVideoId) {
-      // TJ song with YouTube video ID - use iframe
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
       }
-      setYoutubeVideoId(ytVideoId);
+      setAudioLoading(true);
+      const audio = new Audio(`/api/songs/audio-stream?videoId=${ytVideoId}`);
+      audioRef.current = audio;
+      audio.volume = 0.5;
+      audio.addEventListener("canplay", () => {
+        setAudioLoading(false);
+        audio.play().catch(() => {});
+      });
+      audio.addEventListener("error", () => {
+        setAudioLoading(false);
+      });
+      audio.load();
       
       return () => {
-        setYoutubeVideoId(null);
+        audio.pause();
+        audio.src = '';
+        audioRef.current = null;
+        setAudioLoading(false);
       };
     } else {
-      // No audio available
-      setYoutubeVideoId(null);
+      setAudioLoading(false);
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
@@ -273,7 +283,6 @@ export default function LyricsQuizGame({
           audioRef.current.pause();
           audioRef.current = null;
         }
-        setYoutubeVideoId(null);
         dispatch(nextQuestion());
         advanceTimeoutRef.current = null;
       }, advanceDelay);
@@ -290,7 +299,6 @@ export default function LyricsQuizGame({
      if (audioRef.current) {
        audioRef.current.pause();
      }
-     setYoutubeVideoId(null);
      dispatch(selectAnswer(index));
      
      let answerValue: any = "";
@@ -331,7 +339,6 @@ export default function LyricsQuizGame({
      if (audioRef.current) {
        audioRef.current.pause();
      }
-     setYoutubeVideoId(null);
       
       const correctOrder = currentQuestion.correctOrder || [0, 1, 2, 3];
      const isCorrect = JSON.stringify(ordering) === JSON.stringify(correctOrder);
@@ -362,7 +369,6 @@ export default function LyricsQuizGame({
      if (audioRef.current) {
        audioRef.current.pause();
      }
-     setYoutubeVideoId(null);
 
       const normalize = (s: string) => s.replace(/\s*[\(（\[【].*?[\)）\]】]/g, '').replace(/[\(（\[【\)）\]】]/g, '').replace(/\s/g, '').toLowerCase();
      const isCorrect = normalize(textAnswer.trim()) === normalize(currentQuestion.correctAnswer || "");
@@ -813,14 +819,13 @@ export default function LyricsQuizGame({
     }
   };
 
-  const shouldShowYoutubeInCard =
-    Boolean(youtubeVideoId) && (currentQuestion.type === "title_guess" || currentQuestion.type === "artist_guess");
+  const isAudioQuestion = currentQuestion.type === "title_guess" || currentQuestion.type === "artist_guess";
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-[#46178F] to-[#1D0939] font-sans flex">
+    <div className="fixed inset-0 bg-gradient-to-br from-[#46178F] to-[#1D0939] font-sans flex flex-col">
       <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
 
-      <div className="relative z-10 flex-1 flex flex-col p-3 min-w-0">
+      <div className="relative z-10 flex-1 flex flex-col p-3 min-w-0 min-h-0">
         <div className="flex items-center justify-between py-2 px-1 sm:px-5 border-b border-white/10 gap-3 shrink-0">
           <div className="flex items-center gap-3 sm:gap-6">
             <div className="flex flex-col">
@@ -862,15 +867,16 @@ export default function LyricsQuizGame({
             </div>
           )}
 
-          {shouldShowYoutubeInCard ? (
-            <div className="absolute inset-0">
-              <iframe
-                key={`${youtubeVideoId}-${currentQuestionIndex}`}
-                src={`https://www.youtube-nocookie.com/embed/${youtubeVideoId}?autoplay=1&start=30&controls=0&showinfo=0&rel=0&modestbranding=1`}
-                allow="autoplay; encrypted-media; picture-in-picture"
-                className="h-full w-full"
-                title="quiz-video"
-              />
+          {isAudioQuestion ? (
+            <div className="flex flex-col items-center justify-center gap-3">
+              {audioLoading ? (
+                <Loader2 className="w-16 h-16 text-[#46178F] animate-spin" />
+              ) : (
+                <Music className="w-16 h-16 text-[#46178F]" />
+              )}
+              <span className="text-lg sm:text-xl font-bold text-gray-500">
+                {audioLoading ? "로딩 중..." : "노래를 듣고 맞춰보세요"}
+              </span>
             </div>
           ) : (
             <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-gray-800 leading-tight max-w-5xl">
@@ -902,47 +908,48 @@ export default function LyricsQuizGame({
       </div>
       </div>
 
-      {cameraElement && (
-        <div className="fixed bottom-5 right-5 z-40 w-48 h-36 rounded-xl overflow-hidden border border-white/20 bg-black/40 shadow-2xl backdrop-blur-sm">
-          {cameraElement}
+      <div className="relative z-10 shrink-0 h-20 bg-black/30 backdrop-blur-md border-t border-white/10 flex items-center px-4 gap-4">
+        <div className="flex items-center gap-2">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="p-2.5 rounded-lg bg-white/10 text-white/80 hover:text-white hover:bg-white/20 transition-all"
+              title="대기실로 돌아가기"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          )}
+          {onMicToggle && mediaStatus && (
+            <button
+              onClick={onMicToggle}
+              className={`p-2.5 rounded-lg transition-all duration-200 ${
+                mediaStatus.isMicOn
+                  ? "bg-white/10 hover:bg-white/20 text-white"
+                  : "bg-red-500/80 hover:bg-red-500 text-white"
+              }`}
+              title={mediaStatus.isMicOn ? "마이크 끄기" : "마이크 켜기"}
+            >
+              {mediaStatus.isMicOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+            </button>
+          )}
+          {onCameraToggle && mediaStatus && (
+            <button
+              onClick={onCameraToggle}
+              className={`p-2.5 rounded-lg transition-all duration-200 ${
+                mediaStatus.isCameraOn
+                  ? "bg-white/10 hover:bg-white/20 text-white"
+                  : "bg-red-500/80 hover:bg-red-500 text-white"
+              }`}
+              title={mediaStatus.isCameraOn ? "카메라 끄기" : "카메라 켜기"}
+            >
+              {mediaStatus.isCameraOn ? <Video className="w-5 h-5" /> : <CameraOff className="w-5 h-5" />}
+            </button>
+          )}
         </div>
-      )}
-
-      <div className="fixed bottom-5 left-5 z-40 flex items-center gap-2 px-3 py-2 rounded-full bg-black/50 backdrop-blur-md border border-white/15 shadow-xl">
-        {onBack && (
-          <button
-            onClick={onBack}
-            className="p-2 rounded-full bg-white/10 text-white/80 hover:text-white hover:bg-white/20 transition-all"
-            title="대기실로 돌아가기"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-        )}
-        {onMicToggle && mediaStatus && (
-          <button
-            onClick={onMicToggle}
-            className={`p-2 rounded-full transition-all duration-200 ${
-              mediaStatus.isMicOn
-                ? "bg-white/10 hover:bg-white/20 text-white"
-                : "bg-red-500/80 hover:bg-red-500 text-white"
-            }`}
-            title={mediaStatus.isMicOn ? "마이크 끄기" : "마이크 켜기"}
-          >
-            {mediaStatus.isMicOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-          </button>
-        )}
-        {onCameraToggle && mediaStatus && (
-          <button
-            onClick={onCameraToggle}
-            className={`p-2 rounded-full transition-all duration-200 ${
-              mediaStatus.isCameraOn
-                ? "bg-white/10 hover:bg-white/20 text-white"
-                : "bg-red-500/80 hover:bg-red-500 text-white"
-            }`}
-            title={mediaStatus.isCameraOn ? "카메라 끄기" : "카메라 켜기"}
-          >
-            {mediaStatus.isCameraOn ? <Video className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
-          </button>
+        {cameraElement && (
+          <div className="ml-auto h-16 aspect-video rounded-lg overflow-hidden border border-white/20 bg-black/40">
+            {cameraElement}
+          </div>
         )}
       </div>
 

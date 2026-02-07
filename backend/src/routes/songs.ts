@@ -152,6 +152,34 @@ router.post("/lyrics/pronunciation", async (req: Request, res: Response) => {
   }
 });
 
+router.get("/audio-stream", async (req: Request, res: Response) => {
+  try {
+    const videoId = req.query.videoId as string;
+    if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+      return res.status(400).json({ success: false, message: "유효한 videoId가 필요합니다." });
+    }
+
+    // Check Redis cache first (YouTube CDN URLs expire, so short TTL)
+    const cacheKey = `audio:url:${videoId}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      return res.redirect(302, cached);
+    }
+
+    const audioUrl = await youtubeService.getAudioStreamUrl(videoId);
+    if (!audioUrl) {
+      return res.status(404).json({ success: false, message: "오디오 스트림을 가져올 수 없습니다." });
+    }
+
+    // Cache for 1 hour (YouTube CDN URLs typically expire in ~6 hours)
+    await redis.setex(cacheKey, 3600, audioUrl);
+    res.redirect(302, audioUrl);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    res.status(500).json({ success: false, message });
+  }
+});
+
 router.get("/random-mv", async (req: Request, res: Response) => {
   try {
     // 1. Try pre-cached pool first (instant)
