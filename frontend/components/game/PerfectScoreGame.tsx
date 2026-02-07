@@ -1116,10 +1116,10 @@ export default function PerfectScoreGame() {
                       >
                         {word.text}
                       </span>
-                      <span
-                         className="absolute left-0 top-0 bottom-0 text-[#FFD700] overflow-hidden whitespace-nowrap"
+                       <span
+                         className="absolute left-0 top-0 text-[#FFD700] whitespace-nowrap"
                         style={{
-                          width: `${progressValue * 100}%`,
+                          clipPath: `inset(-0.25em ${100 - progressValue * 100}% -0.25em 0)`,
                           WebkitTextStroke: "2px rgba(0,0,0,0.95)",
                           paintOrder: "stroke fill",
                           textShadow: "0 0 14px rgba(255, 215, 0, 0.65)",
