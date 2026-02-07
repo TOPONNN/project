@@ -159,7 +159,7 @@ export default function ElasticCursor() {
           "translate-x-[-50%] translate-y-[-50%]"
         )}
         style={{
-          zIndex: 100,
+          zIndex: 10001,
           backdropFilter: "invert(100%)",
         }}
       />
@@ -168,6 +168,7 @@ export default function ElasticCursor() {
         style={{
           top: y,
           left: x,
+          zIndex: 10001,
           backdropFilter: "invert(100%)",
         }}
       />

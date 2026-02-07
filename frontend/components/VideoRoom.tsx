@@ -11,7 +11,7 @@ import {
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { Loader2, VideoOff, Mic, MicOff, Video, CameraOff, Maximize2, X } from "lucide-react";
-import { createPortal } from "react-dom";
+
 
 interface VideoRoomProps {
   roomCode: string;
@@ -238,7 +238,7 @@ function VideoGrid({ layout = "grid" }: { layout?: "grid" | "row" | "column" }) 
   if (layout === "row" || layout === "column") {
     const isColumn = layout === "column";
     return (
-      <>
+      <div className="relative w-full h-full">
         <div className={`flex ${isColumn ? 'flex-col w-full h-auto py-3' : 'flex-row h-full px-3'} items-center ${isColumn ? 'justify-center' : 'justify-start'} gap-3`} style={{ overflow: 'visible' }}>
           {cameraTracks.map((trackRef) => {
             const hasTrack = trackRef.publication?.track !== undefined;
@@ -274,19 +274,19 @@ function VideoGrid({ layout = "grid" }: { layout?: "grid" | "row" | "column" }) 
           })}
         </div>
 
-        {expandedTrack && createPortal(
-          <div className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8" style={{ animation: 'fadeIn 0.2s ease-out' }} onClick={() => setExpandedTrackSid(null)}>
-            <div className="relative w-full h-full max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={e => e.stopPropagation()}>
-              <div className="relative w-full h-full bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+        {expandedTrack && (
+          <div className="absolute inset-0 z-[50] bg-black/70 backdrop-blur-sm flex items-center justify-center rounded-xl" style={{ animation: 'fadeIn 0.2s ease-out' }} onClick={() => setExpandedTrackSid(null)}>
+            <div className="relative w-[90%] h-[90%] max-w-[400px] max-h-[320px]" onClick={e => e.stopPropagation()}>
+              <div className="relative w-full h-full bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/20">
                 <VideoTrack
                   trackRef={expandedTrack}
-                  className="w-full h-full object-contain"
+                  className="w-full h-full object-cover"
                 />
                 
-                <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent pt-20">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full ${expandedTrack.participant.isSpeaking ? 'bg-green-500 shadow-[0_0_8px_rgba(74,222,128,0.8)]' : 'bg-white/20'}`} />
-                    <span className="text-2xl font-bold text-white drop-shadow-md">
+                <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent pt-10">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2.5 h-2.5 rounded-full ${expandedTrack.participant.isSpeaking ? 'bg-green-500 shadow-[0_0_8px_rgba(74,222,128,0.8)]' : 'bg-white/20'}`} />
+                    <span className="text-base font-bold text-white drop-shadow-md">
                       {expandedTrack.participant.name || expandedTrack.participant.identity}
                     </span>
                   </div>
@@ -294,16 +294,15 @@ function VideoGrid({ layout = "grid" }: { layout?: "grid" | "row" | "column" }) 
 
                 <button
                   onClick={() => setExpandedTrackSid(null)}
-                  className="absolute top-4 right-4 p-3 rounded-full bg-black/50 hover:bg-white/20 text-white transition-colors backdrop-blur-md border border-white/10"
+                  className="absolute top-2 right-2 p-2 rounded-full bg-black/50 hover:bg-white/20 text-white transition-colors backdrop-blur-md border border-white/10"
                 >
-                  <X className="w-6 h-6" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
-          </div>,
-          document.body
+          </div>
         )}
-      </>
+      </div>
     );
   }
 
