@@ -9,7 +9,7 @@ const FEATURES = [
   {
     icon: Music,
     title: "실시간 노래방",
-    description: "WebRTC + LiveKit SFU로 지연 없는 실시간 스트리밍. 최대 8명이 함께 노래하고 화상으로 소통할 수 있습니다.",
+    description: "WebRTC + LiveKit SFU로 지연 없는 실시간 스트리밍. 최대 6명이 함께 노래하고 화상으로 소통할 수 있습니다.",
     accent: "#C0C0C0",
   },
   {
@@ -27,7 +27,7 @@ const FEATURES = [
   {
     icon: FileText,
     title: "가사 자동 싱크",
-    description: "WhisperX + SOFA가 노래에서 가사를 인식하고 음절 단위로 정확하게 싱크합니다. 실시간 색채움 효과로 노래를 따라가세요.",
+    description: "SOFA가 노래에서 가사를 음절 단위로 정확하게 싱크합니다. 실시간 색채움 효과로 노래를 따라가세요.",
     accent: "#74AA9C",
   },
   {

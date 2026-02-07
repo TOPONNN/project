@@ -48,7 +48,7 @@ const architectureLayers = [
       { name: "Flask", desc: "Model Serving" },
       { name: "Celery", desc: "Task Management" },
       { name: "Mel-band Roformer", desc: "Vocal Separation" },
-      { name: "WhisperX + SOFA", desc: "Lyrics Alignment" },
+      { name: "SOFA", desc: "Forced Lyrics Alignment" },
       { name: "FCPE", desc: "Pitch Analysis" },
     ],
   },

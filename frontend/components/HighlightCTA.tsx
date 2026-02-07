@@ -27,18 +27,7 @@ export default function HighlightCTA() {
           </p>
         </RevealAnimation>
       </div>
-      <div className="relative h-[40vh] md:flex-1 md:h-auto bg-black/40 overflow-hidden">
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="none"
-          className="absolute inset-0 w-full h-full object-cover opacity-80"
-        >
-          <source src="/hero-video.webm" type="video/webm" />
-          <source src="/hero-video.mp4" type="video/mp4" />
-        </video>
+      <div className="relative hidden md:flex md:flex-1 bg-black/40 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-l from-transparent to-[#0A0A0A]" />
       </div>
     </SectionWrapper>
