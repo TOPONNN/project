@@ -622,16 +622,14 @@ export default function RoomPage() {
           quizCount={quizCount}
           quizCategory={quizCategory}
           cameraElement={
-            <div className="w-32 rounded-lg border border-white/20 overflow-hidden bg-black/20">
-              <VideoRoom
-                roomCode={code}
-                participantName={userName}
-                participantId={visitorId}
-                hideControls={true}
-                layout="column"
-                onStatusChange={setMediaStatus}
-              />
-            </div>
+            <VideoRoom
+              roomCode={code}
+              participantName={userName}
+              participantId={visitorId}
+              hideControls={true}
+              layout="column"
+              onStatusChange={setMediaStatus}
+            />
           }
         />
       </div>

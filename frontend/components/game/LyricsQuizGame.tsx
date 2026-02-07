@@ -261,12 +261,7 @@ export default function LyricsQuizGame({
         setWrongCount(prev => prev + 1);
       }
 
-      let advanceDelay = 4000;
-      if (myResult?.isCorrect) {
-        advanceDelay = 2000;
-      } else if (remoteResult && !myResult) {
-        advanceDelay = 2500;
-      }
+      const advanceDelay = 3000;
 
       const capturedIndex = currentQuestionIndex;
       if (advanceTimeoutRef.current) clearTimeout(advanceTimeoutRef.current);
@@ -818,17 +813,11 @@ export default function LyricsQuizGame({
     }
   };
 
+  const shouldShowYoutubeInCard =
+    Boolean(youtubeVideoId) && (currentQuestion.type === "title_guess" || currentQuestion.type === "artist_guess");
+
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-[#46178F] to-[#1D0939] font-sans flex">
-       {youtubeVideoId && (
-         <iframe
-           key={youtubeVideoId}
-           src={`https://www.youtube-nocookie.com/embed/${youtubeVideoId}?autoplay=1&start=30&controls=0&showinfo=0&rel=0&modestbranding=1&playsinline=1&vq=hd2160`}
-           allow="autoplay"
-           className="absolute w-1 h-1 opacity-0 pointer-events-none"
-           title="quiz-audio"
-         />
-       )}
       <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
 
       <div className="relative z-10 flex-1 flex flex-col p-3 min-w-0">
@@ -857,41 +846,6 @@ export default function LyricsQuizGame({
               <span className="text-xl sm:text-2xl font-black text-white">{localScore.toLocaleString()}</span>
             </div>
             <TimerCircle timeLeft={timeLeft} timeLimit={currentQuestion.timeLimit || 20} />
-            {onMicToggle && mediaStatus && (
-              <button
-                onClick={onMicToggle}
-                className={`p-2 rounded-full backdrop-blur-sm transition-all duration-200 ${
-                  mediaStatus.isMicOn
-                    ? "bg-black/30 hover:bg-black/50 text-white"
-                    : "bg-red-500/80 hover:bg-red-500 text-white"
-                }`}
-                title={mediaStatus.isMicOn ? "마이크 끄기" : "마이크 켜기"}
-              >
-                {mediaStatus.isMicOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-              </button>
-            )}
-            {onCameraToggle && mediaStatus && (
-              <button
-                onClick={onCameraToggle}
-                className={`p-2 rounded-full backdrop-blur-sm transition-all duration-200 ${
-                  mediaStatus.isCameraOn
-                    ? "bg-black/30 hover:bg-black/50 text-white"
-                    : "bg-red-500/80 hover:bg-red-500 text-white"
-                }`}
-                title={mediaStatus.isCameraOn ? "카메라 끄기" : "카메라 켜기"}
-              >
-                {mediaStatus.isCameraOn ? <Video className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
-              </button>
-            )}
-            {onBack && (
-              <button
-                onClick={onBack}
-                className="p-2 rounded-full bg-black/30 backdrop-blur-sm text-white/70 hover:text-white hover:bg-black/50 transition-all"
-                title="대기실로 돌아가기"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-            )}
           </div>
         </div>
 
@@ -901,15 +855,26 @@ export default function LyricsQuizGame({
           <div className="absolute top-0 left-0 w-full h-2 bg-[#46178F]"></div>
           
           {getQuestionHeader() && (
-            <div className="absolute top-4 left-0 w-full text-center">
+            <div className="absolute top-4 left-0 w-full text-center z-10 pointer-events-none">
                <span className="px-3 py-0.5 sm:px-4 sm:py-1 bg-gray-100 rounded-full text-gray-600 text-xs sm:text-sm font-bold uppercase tracking-wide">
                  {getQuestionHeader()}
                </span>
             </div>
           )}
 
-          <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-gray-800 leading-tight max-w-5xl">
-            {currentQuestion.type === "lyrics_fill" ? (
+          {shouldShowYoutubeInCard ? (
+            <div className="absolute inset-0">
+              <iframe
+                key={`${youtubeVideoId}-${currentQuestionIndex}`}
+                src={`https://www.youtube-nocookie.com/embed/${youtubeVideoId}?autoplay=1&start=30&controls=0&showinfo=0&rel=0&modestbranding=1`}
+                allow="autoplay; encrypted-media; picture-in-picture"
+                className="h-full w-full"
+                title="quiz-video"
+              />
+            </div>
+          ) : (
+            <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-gray-800 leading-tight max-w-5xl">
+              {currentQuestion.type === "lyrics_fill" ? (
                <span className="leading-normal">
                  {currentQuestion.questionText.split("___").map((part, i, arr) => (
                     <span key={i}>
@@ -922,12 +887,13 @@ export default function LyricsQuizGame({
                     </span>
                  ))}
                </span>
-            ) : currentQuestion.type === "initial_guess" ? (
+              ) : currentQuestion.type === "initial_guess" ? (
                <span className="text-gray-500 text-2xl">아래 초성에 해당하는 단어는?</span>
-            ) : (
+              ) : (
                currentQuestion.questionText
-            )}
-          </h1>
+              )}
+            </h1>
+          )}
         </div>
 
         <div className="flex-1 w-full relative min-h-0">
@@ -937,12 +903,48 @@ export default function LyricsQuizGame({
       </div>
 
       {cameraElement && (
-        <div className="relative z-10 w-36 shrink-0 flex flex-col gap-2 p-2">
-          <div className="rounded-xl overflow-hidden border border-white/15 bg-black/30 shadow-lg">
-            {cameraElement}
-          </div>
+        <div className="fixed bottom-5 right-5 z-40 w-48 h-36 rounded-xl overflow-hidden border border-white/20 bg-black/40 shadow-2xl backdrop-blur-sm">
+          {cameraElement}
         </div>
       )}
+
+      <div className="fixed bottom-5 left-5 z-40 flex items-center gap-2 px-3 py-2 rounded-full bg-black/50 backdrop-blur-md border border-white/15 shadow-xl">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="p-2 rounded-full bg-white/10 text-white/80 hover:text-white hover:bg-white/20 transition-all"
+            title="대기실로 돌아가기"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+        )}
+        {onMicToggle && mediaStatus && (
+          <button
+            onClick={onMicToggle}
+            className={`p-2 rounded-full transition-all duration-200 ${
+              mediaStatus.isMicOn
+                ? "bg-white/10 hover:bg-white/20 text-white"
+                : "bg-red-500/80 hover:bg-red-500 text-white"
+            }`}
+            title={mediaStatus.isMicOn ? "마이크 끄기" : "마이크 켜기"}
+          >
+            {mediaStatus.isMicOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+          </button>
+        )}
+        {onCameraToggle && mediaStatus && (
+          <button
+            onClick={onCameraToggle}
+            className={`p-2 rounded-full transition-all duration-200 ${
+              mediaStatus.isCameraOn
+                ? "bg-white/10 hover:bg-white/20 text-white"
+                : "bg-red-500/80 hover:bg-red-500 text-white"
+            }`}
+            title={mediaStatus.isCameraOn ? "카메라 끄기" : "카메라 켜기"}
+          >
+            {mediaStatus.isCameraOn ? <Video className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
+          </button>
+        )}
+      </div>
 
       <AnimatePresence>
         {showResults && (
