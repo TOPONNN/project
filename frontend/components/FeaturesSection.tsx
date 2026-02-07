@@ -3,38 +3,44 @@
 import React from "react";
 import SectionWrapper from "@/components/animations/SectionWrapper";
 import RevealAnimation from "@/components/animations/RevealAnimation";
-import { Music, Target, Mic, FileText, MessageSquareText } from "lucide-react";
+import { Music, Target, Mic, FileText, MessageSquareText, Globe, Gamepad2 } from "lucide-react";
 
 const FEATURES = [
   {
     icon: Music,
     title: "실시간 노래방",
-    description: "WebRTC + LiveKit으로 지연 없는 실시간 스트리밍. 최대 8명이 함께 노래할 수 있습니다.",
-    accent: "#C0C0C0", // Silver
+    description: "WebRTC + LiveKit SFU로 지연 없는 실시간 스트리밍. 최대 8명이 함께 노래하고 화상으로 소통할 수 있습니다.",
+    accent: "#C0C0C0",
   },
   {
     icon: Target,
     title: "AI 음정 분석",
-    description: "FCPE 모델이 실시간으로 음정을 분석하고 점수를 계산합니다. 퍼펙트 스코어에 도전하세요!",
-    accent: "#FFD700", // Gold
+    description: "FCPE 모델이 실시간으로 음정을 분석하고, 콤보·스트릭 기반 점수를 계산합니다. 퍼펙트 스코어에 도전하세요!",
+    accent: "#FFD700",
   },
   {
     icon: Mic,
     title: "보컬 분리",
     description: "Mel-band Roformer가 원곡에서 보컬과 MR을 고품질로 분리합니다. 어떤 노래든 MR로 만들 수 있습니다.",
-    accent: "#FF6B6B", // Red/Coral
+    accent: "#FF6B6B",
   },
   {
     icon: FileText,
-    title: "가사 자동 추출",
-    description: "WhisperX + SOFA가 노래에서 가사를 인식하고 음절 단위로 정확하게 싱크합니다.",
-    accent: "#74AA9C", // Teal
+    title: "가사 자동 싱크",
+    description: "WhisperX + SOFA가 노래에서 가사를 인식하고 음절 단위로 정확하게 싱크합니다. 실시간 색채움 효과로 노래를 따라가세요.",
+    accent: "#74AA9C",
   },
   {
-    icon: MessageSquareText,
-    title: "노래 퀴즈",
-    description: "가사, 제목, 가수, 초성 등 6가지 유형의 퀴즈로 경쟁하세요. Kahoot 스타일 실시간 대결!",
+    icon: Gamepad2,
+    title: "노래 퀴즈 6종",
+    description: "가사 빈칸, 제목 맞추기, 가수 맞추기, 초성 퀴즈, 가사 순서, O/X 퀴즈. TJ 차트 연동, Kahoot 스타일 실시간 대결!",
     accent: "#A855F7",
+  },
+  {
+    icon: Globe,
+    title: "한국곡·일본곡·팝송",
+    description: "TJ 노래방 차트 기반 3개국 카테고리 지원. 일본곡은 한국어 발음 가사와 아티스트 번역을 자동으로 제공합니다.",
+    accent: "#F97316",
   },
 ];
 

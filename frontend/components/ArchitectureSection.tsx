@@ -15,9 +15,11 @@ const architectureLayers = [
     techs: [
       { name: "Next.js 15", desc: "App Router + SSR" },
       { name: "React 19", desc: "UI Components" },
+      { name: "Redux Toolkit", desc: "State Management" },
       { name: "WebRTC", desc: "P2P/SFU Media" },
       { name: "Socket.io", desc: "Real-time Events" },
       { name: "Tailwind CSS", desc: "Styling System" },
+      { name: "Framer Motion", desc: "Animation Engine" },
     ],
   },
   {
@@ -28,10 +30,12 @@ const architectureLayers = [
     shadow: "shadow-emerald-500/20",
     techs: [
       { name: "Express.js", desc: "REST API Gateway" },
-      { name: "LiveKit", desc: "Media Server" },
+      { name: "LiveKit", desc: "Media Server (SFU)" },
       { name: "Redis", desc: "Pub/Sub & Cache" },
       { name: "RabbitMQ", desc: "Task Queue" },
       { name: "MySQL", desc: "Persistent Data" },
+      { name: "yt-dlp", desc: "Audio Stream Proxy" },
+      { name: "Kuroshiro", desc: "Japanese Phonetics" },
     ],
   },
   {
@@ -46,6 +50,20 @@ const architectureLayers = [
       { name: "Mel-band Roformer", desc: "Vocal Separation" },
       { name: "WhisperX + SOFA", desc: "Lyrics Alignment" },
       { name: "FCPE", desc: "Pitch Analysis" },
+    ],
+  },
+  {
+    id: "infra",
+    name: "Infrastructure",
+    role: "DevOps & Monitoring",
+    color: "bg-amber-400",
+    shadow: "shadow-amber-500/20",
+    techs: [
+      { name: "Docker Compose", desc: "Container Orchestration" },
+      { name: "Nginx", desc: "Reverse Proxy + SSL" },
+      { name: "Jenkins", desc: "CI/CD Pipeline" },
+      { name: "AWS EC2 + S3", desc: "Compute & Storage" },
+      { name: "ELK Stack", desc: "Logging & Monitoring" },
     ],
   },
 ];
