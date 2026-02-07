@@ -556,7 +556,61 @@ export default function RoomPage() {
       }
     };
 
-  if (gameStatus === "playing" && (currentSong || room?.gameMode === "lyrics_quiz")) {
+  if (gameStatus === "playing" && room?.gameMode === "lyrics_quiz") {
+    return (
+      <div className="fixed inset-0 bg-black text-white">
+        <GameComponent />
+
+        <div className="absolute top-3 right-3 z-50 flex items-center gap-2">
+          <button
+            onClick={handleMicToggle}
+            className={`p-2 rounded-full backdrop-blur-sm transition-all duration-200 ${
+              mediaStatus.isMicOn
+                ? "bg-black/40 hover:bg-black/60 text-white"
+                : "bg-red-500/80 hover:bg-red-500 text-white"
+            }`}
+            title={mediaStatus.isMicOn ? "마이크 끄기" : "마이크 켜기"}
+          >
+            {mediaStatus.isMicOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={handleCameraToggle}
+            className={`p-2 rounded-full backdrop-blur-sm transition-all duration-200 ${
+              mediaStatus.isCameraOn
+                ? "bg-black/40 hover:bg-black/60 text-white"
+                : "bg-red-500/80 hover:bg-red-500 text-white"
+            }`}
+            title={mediaStatus.isCameraOn ? "카메라 끄기" : "카메라 켜기"}
+          >
+            {mediaStatus.isCameraOn ? <Video className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={() => {
+              dispatch(setGameStatus("waiting"));
+              dispatch(setCurrentSong(null));
+            }}
+            className="p-2 rounded-full bg-black/40 backdrop-blur-sm text-white/60 hover:text-white hover:bg-black/60 transition-all"
+            title="대기실로 돌아가기"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="absolute bottom-4 right-4 z-30 w-36 rounded-xl border border-white/20 overflow-hidden opacity-80 hover:opacity-100 transition-opacity">
+          <VideoRoom
+            roomCode={code}
+            participantName={userName}
+            participantId={visitorId}
+            hideControls={true}
+            layout="column"
+            onStatusChange={setMediaStatus}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (gameStatus === "playing" && currentSong) {
     return (
       <div className="fixed inset-0 bg-black text-white">
         <GameComponent />
