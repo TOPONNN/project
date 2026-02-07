@@ -29,8 +29,8 @@ interface LyricsLine {
 // 노래방 싱크 설정 상수
 const SYNC_CONFIG = {
   WORD_LEAD_TIME: 0,            // 단어 하이라이트가 미리 시작하는 시간 (초)
-  NEXT_LINE_PREVIEW: 0.5,      // 다음 가사 미리보기 시간 (초)
-  LINE_HOLD_AFTER_END: 0.5,    // 가사가 끝난 후 유지 시간 (초)
+  NEXT_LINE_PREVIEW: 1.5,      // 다음 가사 미리보기 시간 (초)
+  LINE_HOLD_AFTER_END: 1.0,    // 가사가 끝난 후 유지 시간 (초)
 };
 
 type GamePhase = 'intro' | 'singing';
@@ -136,16 +136,15 @@ export default function NormalModeGame() {
     return 'singing';
   }, [localTime, lyrics]);
 
-  // Interlude detection
   const isInterlude = useMemo(() => {
     if (gamePhase !== 'singing') return false;
     if (currentLyricIndex !== -1) return false;
-    // Find next upcoming lyric
     const nextIdx = lyrics.findIndex(l => l.startTime > localTime);
-    if (nextIdx <= 0) return false;
+    if (nextIdx < 0) return false;
+    if (nextIdx === 0) return true;
     const prevLine = lyrics[nextIdx - 1];
     const nextLine = lyrics[nextIdx];
-    return (nextLine.startTime - prevLine.endTime) > 5;
+    return (nextLine.startTime - prevLine.endTime) > 3;
   }, [gamePhase, currentLyricIndex, lyrics, localTime]);
 
   // Current pitch from current word
@@ -160,8 +159,11 @@ export default function NormalModeGame() {
   const findCurrentLyricIndex = useCallback((time: number): number => {
     if (lyrics.length === 0) return -1;
     
-    // 첫 번째 가사 시작 전: 첫 번째 가사를 미리 보여줌 (인덱스 0 반환)
-    if (time < lyrics[0].startTime) return 0;
+    // 첫 번째 가사 시작 전: 프리뷰 시간 내에만 표시, 그 외엔 간주중
+    if (time < lyrics[0].startTime) {
+      if (lyrics[0].startTime - time <= SYNC_CONFIG.NEXT_LINE_PREVIEW) return 0;
+      return -1;
+    }
     
     // Defensive: find the LATEST line whose range covers current time
     // (handles any residual overlap in data)
@@ -599,57 +601,52 @@ export default function NormalModeGame() {
         )}
       </div>
 
-      {/* 2. Intro Screen (TJ Style) */}
       <AnimatePresence>
         {gamePhase === 'intro' && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            exit={{ opacity: 0, transition: { duration: 0.3 } }}
             className="absolute inset-0 z-20 flex flex-col items-center justify-center"
           >
-            {/* Pink Banner */}
-            <div className="w-[95%] sm:w-[85%] max-w-5xl bg-[#C25E8C]/90 backdrop-blur-sm rounded-[2rem] p-5 pb-8 sm:p-8 sm:pb-12 md:p-10 md:pb-14 shadow-2xl flex flex-col items-center text-center relative overflow-hidden border border-white/10">
-              <div className="absolute top-0 left-0 w-full h-1 bg-white/30" />
-              
-              <h1 className="text-3xl sm:text-5xl md:text-7xl font-bold text-white mb-4 tracking-tight drop-shadow-md">
-                {currentSong.title}
-              </h1>
-              <p className="text-lg sm:text-2xl md:text-3xl text-white/90 font-medium">
-                {currentSong.artist}
-              </p>
+            <div className="flex flex-col items-center text-center max-w-3xl px-6">
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1, duration: 0.5 }}
+              >
+                <h1 className="text-4xl sm:text-6xl md:text-8xl font-black text-white tracking-tight leading-tight" style={{ textShadow: '0 4px 30px rgba(0,0,0,0.5)' }}>
+                  {currentSong.title}
+                </h1>
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.3, duration: 0.5 }}
+                className="mt-4 flex items-center gap-4"
+              >
+                <span className="block w-10 h-px bg-white/30" />
+                <p className="text-xl sm:text-2xl md:text-3xl text-white/70 font-medium tracking-wide">
+                  {currentSong.artist}
+                </p>
+                <span className="block w-10 h-px bg-white/30" />
+              </motion.div>
 
-              {/* Decorative circle/logo placeholder */}
-              <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-white/10 rounded-full blur-2xl" />
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6, duration: 0.4 }}
+                className="mt-10 flex items-center gap-6 text-white/40 text-xs sm:text-sm font-medium tracking-wider"
+              >
+                {(currentSong.lyricist || currentSong.composer) && (
+                  <>
+                    {currentSong.lyricist && <span>작사 {currentSong.lyricist}</span>}
+                    {currentSong.lyricist && currentSong.composer && <span className="text-white/20">|</span>}
+                    {currentSong.composer && <span>작곡 {currentSong.composer}</span>}
+                  </>
+                )}
+              </motion.div>
             </div>
-
-            {/* Info Row */}
-            <div className="mt-8 flex items-center bg-black/80 backdrop-blur-md rounded-xl border border-white/20 overflow-x-auto overflow-y-hidden shadow-xl max-w-full">
-               <div className="px-4 py-2 sm:px-6 sm:py-3 md:px-8 md:py-4 flex flex-col items-center min-w-[80px] sm:min-w-[100px] md:min-w-[120px]">
-                 <span className="text-yellow-400 text-xs sm:text-sm font-bold mb-1">현재음정</span>
-                 <span className="text-white font-bold text-base sm:text-lg md:text-xl">{currentPitch || "원키"}</span>
-               </div>
-               <div className="w-px h-8 sm:h-10 md:h-12 bg-white/20" />
-               <div className="px-4 py-2 sm:px-6 sm:py-3 md:px-8 md:py-4 flex flex-col items-center min-w-[80px] sm:min-w-[100px] md:min-w-[120px]">
-                 <span className="text-yellow-400 text-xs sm:text-sm font-bold mb-1">원음정</span>
-                 <span className="text-white font-bold text-base sm:text-lg md:text-xl">원키</span>
-               </div>
-               <div className="w-px h-8 sm:h-10 md:h-12 bg-white/20" />
-               <div className="px-4 py-2 sm:px-6 sm:py-3 md:px-8 md:py-4 flex flex-col items-center min-w-[80px] sm:min-w-[100px] md:min-w-[120px]">
-                  <span className="text-yellow-400 text-xs sm:text-sm font-bold mb-1">작사</span>
-                   <span className="text-white font-bold text-sm sm:text-lg md:text-xl text-center whitespace-nowrap">{currentSong.lyricist || currentSong.artist}</span>
-                 </div>
-                 <div className="w-px h-8 sm:h-10 md:h-12 bg-white/20" />
-                 <div className="px-4 py-2 sm:px-6 sm:py-3 md:px-8 md:py-4 flex flex-col items-center min-w-[80px] sm:min-w-[100px] md:min-w-[120px]">
-                   <span className="text-yellow-400 text-xs sm:text-sm font-bold mb-1">작곡</span>
-                   <span className="text-white font-bold text-sm sm:text-lg md:text-xl text-center whitespace-nowrap">{currentSong.composer || currentSong.artist}</span>
-                </div>
-            </div>
-
-             {/* TJ Branding */}
-             <div className="absolute bottom-10 opacity-50">
-                <span className="text-white font-bold tracking-widest text-lg">KERO</span>
-             </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -687,7 +684,7 @@ export default function NormalModeGame() {
                           return (
                              <span key={i} className="relative block text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-black">
                                 <span className="text-white relative z-10" style={{ WebkitTextStroke: '2px rgba(0,0,0,0.8)', paintOrder: 'stroke fill' }}>{word.text}</span>
-                                 <span className="absolute left-0 top-0 text-cyan-400 whitespace-nowrap z-20" style={{ clipPath: `inset(-0.25em ${100 - progress}% -0.25em 0)`, WebkitTextStroke: '2px rgba(0,0,0,0.8)', paintOrder: 'stroke fill' }}>{word.text}</span>
+                                 <span className="absolute left-0 top-0 text-cyan-400 whitespace-nowrap z-20" style={{ clipPath: `inset(-0.25em ${100 - progress}% -0.25em 0)`, transition: 'clip-path 60ms linear', WebkitTextStroke: '2px rgba(0,0,0,0.8)', paintOrder: 'stroke fill' }}>{word.text}</span>
                              </span>
                           );
                         });
@@ -731,19 +728,21 @@ export default function NormalModeGame() {
         )}
       </AnimatePresence>
 
-      {/* 4. Interlude Display */}
       <AnimatePresence>
         {isInterlude && (
            <motion.div 
-             initial={{ opacity: 0, scale: 0.8 }}
-             animate={{ opacity: 1, scale: 1 }}
+             initial={{ opacity: 0 }}
+             animate={{ opacity: 1 }}
              exit={{ opacity: 0 }}
-             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30"
+             transition={{ duration: 0.4 }}
+             className="absolute bottom-[28%] sm:bottom-[32%] left-0 right-0 z-30 flex justify-center"
            >
-              <div className="bg-black/40 backdrop-blur-sm px-10 py-4 rounded-full border border-white/20">
-                 <span className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-cyan-300 animate-pulse tracking-widest drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]">
-                   ♪ 간 주 중 ♪
+              <div className="flex items-center gap-3">
+                 <span className="block w-8 h-px bg-white/30" />
+                 <span className="text-lg sm:text-xl md:text-2xl font-medium text-white/50 tracking-[0.3em]">
+                   간주중
                  </span>
+                 <span className="block w-8 h-px bg-white/30" />
               </div>
            </motion.div>
         )}
