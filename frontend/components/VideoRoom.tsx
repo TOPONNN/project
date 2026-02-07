@@ -10,17 +10,19 @@ import {
   TrackReference,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { Loader2, VideoOff, Mic, MicOff, Video, CameraOff } from "lucide-react";
+import { Loader2, VideoOff, Mic, MicOff, Video, CameraOff, Maximize2, X } from "lucide-react";
+import { createPortal } from "react-dom";
 
 interface VideoRoomProps {
   roomCode: string;
   participantName: string;
   participantId?: string;
   hideControls?: boolean;
+  layout?: "grid" | "row" | "column";
   onStatusChange?: (status: { isCameraOn: boolean; isMicOn: boolean }) => void;
 }
 
-export default function VideoRoom({ roomCode, participantName, participantId, hideControls = false, onStatusChange }: VideoRoomProps) {
+export default function VideoRoom({ roomCode, participantName, participantId, hideControls = false, layout = "grid", onStatusChange }: VideoRoomProps) {
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(true);
@@ -97,15 +99,15 @@ export default function VideoRoom({ roomCode, participantName, participantId, hi
       connect={true}
       video={true}
       audio={true}
-      style={{ height: "100%", background: "#000" }}
+      style={{ height: "100%", background: "transparent" }}
     >
-      <RoomContent hideControls={hideControls} onStatusChange={onStatusChange} />
+      <RoomContent hideControls={hideControls} layout={layout} onStatusChange={onStatusChange} />
       <RoomAudioRenderer />
     </LiveKitRoom>
   );
 }
 
-function RoomContent({ hideControls, onStatusChange }: { hideControls: boolean; onStatusChange?: (status: { isCameraOn: boolean; isMicOn: boolean }) => void }) {
+function RoomContent({ hideControls, layout = "grid", onStatusChange }: { hideControls: boolean; layout?: "grid" | "row" | "column"; onStatusChange?: (status: { isCameraOn: boolean; isMicOn: boolean }) => void }) {
   const { localParticipant } = useLocalParticipant();
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCamOn, setIsCamOn] = useState(true);
@@ -148,9 +150,9 @@ function RoomContent({ hideControls, onStatusChange }: { hideControls: boolean; 
   }, [toggleCamera, toggleMicrophone]);
 
   return (
-    <div className={`flex flex-col ${hideControls ? '' : 'h-full'}`}>
-      <div className={hideControls ? '' : 'flex-1 overflow-hidden'}>
-        <VideoGrid />
+    <div className={`flex flex-col ${hideControls ? 'h-full' : 'h-full'}`}>
+      <div className={hideControls ? 'h-full overflow-hidden' : 'flex-1 overflow-hidden'}>
+        <VideoGrid layout={layout} />
       </div>
       {!hideControls && (
         <div className="flex items-center justify-center gap-3 p-3 border-t border-white/10 bg-zinc-900/50">
@@ -183,23 +185,46 @@ function RoomContent({ hideControls, onStatusChange }: { hideControls: boolean; 
   );
 }
 
-function VideoGrid() {
+function VideoGrid({ layout = "grid" }: { layout?: "grid" | "row" | "column" }) {
   const tracks = useTracks(
     [
-      { source: Track.Source.Camera, withPlaceholder: false },
+      { source: Track.Source.Camera, withPlaceholder: true },
       { source: Track.Source.ScreenShare, withPlaceholder: false },
     ],
     { onlySubscribed: false }
   );
 
+  const [expandedTrackSid, setExpandedTrackSid] = useState<string | null>(null);
+
   const cameraTracks = tracks.filter(
     (track): track is TrackReference => 
-      track.source === Track.Source.Camera && 
-      track.publication !== undefined &&
-      track.publication.track !== undefined
+      track.source === Track.Source.Camera
   );
 
+  const expandedTrack = cameraTracks.find(t => t.publication?.track?.sid === expandedTrackSid);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpandedTrackSid(null);
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, []);
+
   if (cameraTracks.length === 0) {
+    if (layout === "row" || layout === "column") {
+      return (
+        <div className={`flex items-center justify-center ${layout === 'row' ? 'h-full gap-3 px-4' : 'w-full flex-col gap-3 py-4'}`}>
+          <div className="relative w-44 h-36 md:w-48 md:h-40 bg-zinc-800/80 rounded-xl overflow-hidden border border-white/10 shadow-xl shrink-0 flex items-center justify-center backdrop-blur-sm">
+            <CameraOff className="w-8 h-8 text-white/20" />
+            <div className="absolute bottom-0 left-0 right-0 py-1.5 bg-black/60 backdrop-blur-sm text-[11px] font-bold text-white/50 text-center">
+              카메라 OFF
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
     return (
       <div className="flex items-center justify-center aspect-[4/3] text-white/60 text-xs">
         <div className="flex flex-col items-center gap-1.5">
@@ -210,27 +235,110 @@ function VideoGrid() {
     );
   }
 
+  if (layout === "row" || layout === "column") {
+    const isColumn = layout === "column";
+    return (
+      <>
+        <div className={`flex ${isColumn ? 'flex-col w-full h-auto py-3' : 'flex-row h-full px-3'} items-center ${isColumn ? 'justify-center' : 'justify-start'} gap-3`} style={{ overflow: 'visible' }}>
+          {cameraTracks.map((trackRef) => {
+            const hasTrack = trackRef.publication?.track !== undefined;
+            return (
+              <div
+                key={trackRef.participant.sid}
+                onClick={() => hasTrack ? setExpandedTrackSid(trackRef.publication.track?.sid || null) : undefined}
+                className={`relative ${isColumn ? 'w-44 h-36 md:w-48 md:h-40' : 'h-36 w-44 md:h-40 md:w-48'} bg-zinc-900/80 rounded-xl overflow-hidden border border-white/10 hover:border-white/30 shadow-xl shrink-0 ${hasTrack ? 'cursor-pointer' : ''} transition-all hover:scale-[1.03] active:scale-95 group backdrop-blur-sm`}
+              >
+                {hasTrack ? (
+                  <VideoTrack
+                    trackRef={trackRef}
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center bg-zinc-800/90">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-base font-bold text-white shadow-lg">
+                      {(trackRef.participant.name || trackRef.participant.identity)?.charAt(0) || '?'}
+                    </div>
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  {hasTrack && <Maximize2 className="w-7 h-7 text-white drop-shadow-lg" />}
+                </div>
+                <div className="absolute bottom-0 left-0 right-0 py-1.5 bg-gradient-to-t from-black/70 to-transparent text-[11px] font-bold text-white text-center truncate px-2">
+                  {trackRef.participant.name || trackRef.participant.identity}
+                </div>
+                {trackRef.participant.isSpeaking && (
+                  <div className="absolute inset-0 border-2 border-green-400 rounded-xl pointer-events-none shadow-[inset_0_0_12px_rgba(74,222,128,0.3)]" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {expandedTrack && createPortal(
+          <div className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8" style={{ animation: 'fadeIn 0.2s ease-out' }} onClick={() => setExpandedTrackSid(null)}>
+            <div className="relative w-full h-full max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={e => e.stopPropagation()}>
+              <div className="relative w-full h-full bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+                <VideoTrack
+                  trackRef={expandedTrack}
+                  className="w-full h-full object-contain"
+                />
+                
+                <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent pt-20">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-3 h-3 rounded-full ${expandedTrack.participant.isSpeaking ? 'bg-green-500 shadow-[0_0_8px_rgba(74,222,128,0.8)]' : 'bg-white/20'}`} />
+                    <span className="text-2xl font-bold text-white drop-shadow-md">
+                      {expandedTrack.participant.name || expandedTrack.participant.identity}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setExpandedTrackSid(null)}
+                  className="absolute top-4 right-4 p-3 rounded-full bg-black/50 hover:bg-white/20 text-white transition-colors backdrop-blur-md border border-white/10"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+      </>
+    );
+  }
+
   const gridClass = cameraTracks.length === 1 ? "grid-cols-1" :
                     cameraTracks.length === 2 ? "grid-cols-1" :
                     "grid-cols-2";
 
   return (
-    <div className={`grid ${gridClass} gap-0.5 p-0.5`}>
-      {cameraTracks.map((trackRef) => (
-        <div
-          key={trackRef.participant.sid}
-          className="relative aspect-[4/3] bg-zinc-900 rounded-md overflow-hidden border border-white/5"
-        >
-          <VideoTrack
-            trackRef={trackRef}
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-          <div className="absolute bottom-0.5 left-0.5 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm rounded text-[8px] font-bold text-white/90 flex items-center gap-0.5">
-            <div className="w-1 h-1 rounded-full bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.8)]" />
-            {trackRef.participant.name || trackRef.participant.identity}
+    <div className={`grid ${gridClass} gap-0.5 p-0.5 h-full`}>
+      {cameraTracks.map((trackRef) => {
+        const hasTrack = trackRef.publication?.track !== undefined;
+        return (
+          <div
+            key={trackRef.participant.sid}
+            className="relative w-full h-full bg-zinc-900 rounded-md overflow-hidden border border-white/5"
+          >
+            {hasTrack ? (
+              <VideoTrack
+                trackRef={trackRef}
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center bg-zinc-800">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-sm font-bold text-white">
+                  {(trackRef.participant.name || trackRef.participant.identity)?.charAt(0) || '?'}
+                </div>
+              </div>
+            )}
+            <div className="absolute bottom-0.5 left-0.5 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm rounded text-[8px] font-bold text-white/90 flex items-center gap-0.5">
+              <div className={`w-1 h-1 rounded-full ${trackRef.participant.isSpeaking ? 'bg-green-400 shadow-[0_0_4px_rgba(74,222,128,0.8)]' : 'bg-white/50'}`} />
+              {trackRef.participant.name || trackRef.participant.identity}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

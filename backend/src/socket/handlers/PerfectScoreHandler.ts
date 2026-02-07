@@ -43,9 +43,21 @@ export class PerfectScoreHandler {
     });
   }
 
-  async startGame(roomCode: string, songId: string): Promise<void> {
-    const song = await songService.getSongById(songId);
-    if (!song) return;
+  async startGame(roomCode: string, songId: string, songData?: Record<string, unknown>, queueItemId?: string): Promise<void> {
+    let broadcastSongData = songData;
+    if (!broadcastSongData) {
+      const song = await songService.getSongById(songId);
+      if (!song) return;
+
+      broadcastSongData = {
+        id: song.id,
+        title: song.title,
+        artist: song.artist,
+        instrumentalUrl: song.instrumentalUrl,
+        duration: song.duration,
+        lyrics: song.lyrics,
+      };
+    }
 
     await roomService.updateRoomStatus(roomCode, RoomStatus.PLAYING);
 
@@ -55,14 +67,8 @@ export class PerfectScoreHandler {
     }
 
     this.io.to(roomCode).emit("game:started", {
-      song: {
-        id: song.id,
-        title: song.title,
-        artist: song.artist,
-        instrumentalUrl: song.instrumentalUrl,
-        duration: song.duration,
-        lyrics: song.lyrics,
-      },
+      song: broadcastSongData,
+      queueItemId,
     });
   }
 

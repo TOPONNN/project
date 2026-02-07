@@ -3,9 +3,10 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, SkipForward, Volume2, VolumeX, Mic, MicOff, Video, CameraOff, RotateCcw, AlertCircle, Music2 } from "lucide-react";
+import { Play, Pause, SkipForward, Volume2, VolumeX, Mic, MicOff, Video, CameraOff, RotateCcw, AlertCircle, Music2, Trophy, Star } from "lucide-react";
 import type { RootState } from "@/store";
 import { updateCurrentTime, setGameStatus } from "@/store/slices/gameSlice";
+import { getSocket } from "@/lib/socket";
 
 interface LyricsWord {
   startTime: number;
@@ -37,7 +38,9 @@ type GamePhase = 'intro' | 'singing';
 export default function NormalModeGame() {
   const dispatch = useDispatch();
   const { currentSong, status, songQueue } = useSelector((state: RootState) => state.game);
+  const { code: roomCode, participants } = useSelector((state: RootState) => state.room);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const lastSyncTimeRef = useRef<number>(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isMicOn, setIsMicOn] = useState(true);
@@ -56,10 +59,27 @@ export default function NormalModeGame() {
   const scoredWordsRef = useRef<Set<string>>(new Set());
   const comboRef = useRef(0);
   const scoreRef = useRef(0);
+  const maxComboRef = useRef(0);
+  const totalWordsRef = useRef(0);
   const isMicOnRef = useRef(isMicOn);
   isMicOnRef.current = isMicOn;
 
   const lyrics: LyricsLine[] = currentSong?.lyrics || [];
+
+  // Initialize total words count
+  useEffect(() => {
+    if (lyrics.length > 0) {
+      let count = 0;
+      lyrics.forEach(line => {
+        if (line.words && line.words.length > 0) {
+          count += line.words.length;
+        } else {
+          count += 1;
+        }
+      });
+      totalWordsRef.current = count;
+    }
+  }, [lyrics]);
   const audioUrl = currentSong?.instrumentalUrl || currentSong?.audioUrl;
   const videoId = currentSong?.videoId;
 
@@ -195,6 +215,58 @@ export default function NormalModeGame() {
     };
   }, [dispatch, volume]);
 
+  useEffect(() => {
+    const handleSyncTime = (e: CustomEvent<{ time: number }>) => {
+      if (audioRef.current && typeof e.detail?.time === "number") {
+        audioRef.current.currentTime = e.detail.time;
+        setLocalTime(e.detail.time);
+        setIsPlaying(true);
+        audioRef.current.play().catch(() => {});
+      }
+    };
+
+    window.addEventListener("kero:syncTime", handleSyncTime as EventListener);
+    return () => window.removeEventListener("kero:syncTime", handleSyncTime as EventListener);
+  }, []);
+
+  const togglePlay = useCallback(() => {
+    if (!audioRef.current || !audioLoaded) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch(console.error);
+    }
+    setIsPlaying(!isPlaying);
+  }, [isPlaying, audioLoaded]);
+
+  useEffect(() => {
+    const handleTogglePlay = () => togglePlay();
+    const handleSetVolume = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail?.volume === 'number') {
+        setVolume(detail.volume);
+      }
+    };
+    const handleSeek = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail?.progress === 'number' && audioRef.current && duration) {
+        const newTime = detail.progress * duration;
+        audioRef.current.currentTime = newTime;
+        setLocalTime(newTime);
+      }
+    };
+
+    window.addEventListener("kero:togglePlay", handleTogglePlay);
+    window.addEventListener("kero:setVolume", handleSetVolume);
+    window.addEventListener("kero:seek", handleSeek);
+
+    return () => {
+      window.removeEventListener("kero:togglePlay", handleTogglePlay);
+      window.removeEventListener("kero:setVolume", handleSetVolume);
+      window.removeEventListener("kero:seek", handleSeek);
+    };
+  }, [togglePlay, duration]);
+
   // 고성능 시간 업데이트 루프
   useEffect(() => {
     if (!isPlaying || !audioRef.current) {
@@ -215,6 +287,17 @@ export default function NormalModeGame() {
         // Redux 업데이트는 덜 자주 (성능) - must check BEFORE updating lastTimeRef
         if (Math.floor(time * 10) !== Math.floor(lastTimeRef.current * 10)) {
           dispatch(updateCurrentTime(time));
+        }
+        
+        // 서버에 시간 동기화 (2초마다)
+        if (time - lastSyncTimeRef.current >= 2) {
+          lastSyncTimeRef.current = time;
+          try {
+            const socket = getSocket();
+            if (socket?.connected && roomCode) {
+              socket.emit("normal:play", { roomCode, currentTime: time });
+            }
+          } catch {}
         }
         
         lastTimeRef.current = time;
@@ -244,10 +327,11 @@ export default function NormalModeGame() {
                     const comboMult = Math.min(2, 1 + comboRef.current * 0.1);
                     const points = Math.round(10 * energy * comboMult);
                     comboRef.current += 1;
+                    maxComboRef.current = Math.max(maxComboRef.current, comboRef.current);
                     scoreRef.current += points;
                     setScore(scoreRef.current);
                     setCombo(comboRef.current);
-                    setLastScorePopup({ points, key: Date.now() });
+                    // Removed score popup
                   } else {
                     comboRef.current = 0;
                     setCombo(0);
@@ -263,10 +347,10 @@ export default function NormalModeGame() {
                   const comboMult = Math.min(2, 1 + comboRef.current * 0.1);
                   const points = Math.round(50 * comboMult); // 50 base points per line
                   comboRef.current += 1;
+                  maxComboRef.current = Math.max(maxComboRef.current, comboRef.current);
                   scoreRef.current += points;
                   setScore(scoreRef.current);
                   setCombo(comboRef.current);
-                  setLastScorePopup({ points, key: Date.now() });
                 } else {
                   comboRef.current = 0;
                   setCombo(0);
@@ -303,15 +387,7 @@ export default function NormalModeGame() {
     }
   }, [status, audioLoaded]);
 
-  const togglePlay = useCallback(() => {
-    if (!audioRef.current || !audioLoaded) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-    } else {
-      audioRef.current.play().catch(console.error);
-    }
-    setIsPlaying(!isPlaying);
-  }, [isPlaying, audioLoaded]);
+
 
   const handleSeek = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!audioRef.current || !duration) return;
@@ -332,6 +408,7 @@ export default function NormalModeGame() {
     setLastScorePopup(null);
     scoreRef.current = 0;
     comboRef.current = 0;
+    maxComboRef.current = 0;
     scoredWordsRef.current.clear();
   }, []);
 
@@ -537,46 +614,8 @@ export default function NormalModeGame() {
         )}
       </AnimatePresence>
 
-      {/* Score Overlay */}
-      <AnimatePresence>
-        {gamePhase === 'singing' && score > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20 flex flex-col items-end gap-1"
-          >
-            <motion.div
-              key={score}
-              animate={{ scale: [1.08, 1] }}
-              transition={{ duration: 0.15 }}
-              className="bg-black/40 backdrop-blur-sm rounded-xl px-3 py-1.5 sm:px-4 sm:py-2 flex items-center gap-3 border border-white/10"
-            >
-              <span className="text-white/60 text-xs font-medium tracking-wider uppercase">Score</span>
-              <span className="text-white font-bold text-base sm:text-lg tabular-nums">{score.toLocaleString()}</span>
-              {combo >= 3 && (
-                <span className="text-cyan-400 text-xs font-bold ml-1">
-                  x{Math.min(2, 1 + combo * 0.1).toFixed(1)}
-                </span>
-              )}
-            </motion.div>
-            <AnimatePresence mode="popLayout">
-              {lastScorePopup && (
-                <motion.div
-                  key={lastScorePopup.key}
-                  initial={{ opacity: 1, y: 0 }}
-                  animate={{ opacity: 0, y: -16 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.6 }}
-                  className="text-cyan-300 text-sm font-bold pr-2"
-                >
-                  +{lastScorePopup.points}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-        )}
-      </AnimatePresence>
+       {/* Score Overlay Removed */}
+
 
        {/* 3. Lyrics Display (Singing Phase) */}
        <AnimatePresence>
@@ -654,130 +693,91 @@ export default function NormalModeGame() {
         )}
       </AnimatePresence>
 
-      {/* 5. Bottom Controls */}
-      <div className="absolute bottom-0 left-0 right-0 z-30 px-3 py-3 pb-4 sm:px-4 sm:py-4 md:px-6 md:py-6 md:pb-8 bg-gradient-to-t from-black via-black/80 to-transparent">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center gap-4 mb-4">
-            <span className="text-[10px] sm:text-xs text-gray-400 font-mono w-8 sm:w-10 text-right">{formatTime(localTime)}</span>
-            <div
-              className="flex-1 h-1.5 bg-white/20 rounded-full cursor-pointer group hover:h-2 transition-all"
-              onClick={handleSeek}
-            >
-              <div
-                className="h-full bg-blue-500 rounded-full relative"
-                style={{ width: `${progress}%` }}
-              >
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity scale-0 group-hover:scale-100" />
-              </div>
-            </div>
-            <span className="text-[10px] sm:text-xs text-gray-400 font-mono w-8 sm:w-10">{formatTime(duration)}</span>
-          </div>
+       <div className="hidden" />
 
-          <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {/* Volume */}
-                <div className="flex items-center gap-2 group">
-                  <button
-                    onClick={() => setIsMuted(!isMuted)}
-                    className="p-2 text-gray-400 hover:text-white transition-colors"
-                  >
-                    {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-                  </button>
-                  <div className="w-0 overflow-hidden group-hover:w-24 transition-all duration-300">
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={volume}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        setVolume(v);
-                        if (audioRef.current) audioRef.current.volume = v;
-                      }}
-                      className="w-20 h-1 accent-blue-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Divider */}
-                <div className="w-px h-6 bg-white/20" />
-
-                {/* LiveKit Controls */}
-                <button
-                  onClick={handleMicToggle}
-                  className={`p-2 rounded-full transition-all ${
-                    isMicOn 
-                    ? "text-white/60 hover:text-white" 
-                    : "bg-red-500/80 text-white"
-                  }`}
-                >
-                  {isMicOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-                </button>
-                <button
-                  onClick={handleCameraToggle}
-                  className={`p-2 rounded-full transition-all ${
-                    isCamOn 
-                    ? "text-white/60 hover:text-white" 
-                    : "bg-red-500/80 text-white"
-                  }`}
-                >
-                  {isCamOn ? <Video className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
-                </button>
-              </div>
-
-              <div className="flex items-center gap-6">
-                <button
-                  onClick={handleRestart}
-                  className="p-2 text-white/60 hover:text-white transition-colors hover:rotate-[-30deg]"
-                >
-                  <RotateCcw className="w-6 h-6" />
-                </button>
-                
-                <button
-                  onClick={togglePlay}
-                  disabled={!audioLoaded}
-                  className="w-14 h-14 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg shadow-white/10 disabled:opacity-50 disabled:scale-100"
-                >
-                  {isPlaying ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-1" />}
-                </button>
-                
-                <button 
-                  onClick={() => window.dispatchEvent(new Event("kero:skipForward"))}
-                  className="p-2 text-white/60 hover:text-white transition-colors"
-                >
-                  <SkipForward className="w-6 h-6" />
-                </button>
-              </div>
-
-            <div className="w-[140px] hidden md:block" /> 
-          </div>
-        </div>
-      </div>
-
-       {/* Final Score */}
+       {/* Final Score / Result Screen */}
        <AnimatePresence>
-         {status === 'finished' && score > 0 && (
+         {status === 'finished' && (
            <motion.div
              initial={{ opacity: 0, scale: 0.9 }}
              animate={{ opacity: 1, scale: 1 }}
              exit={{ opacity: 0 }}
-             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40"
+             className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-lg"
            >
-             <div className="bg-black/60 backdrop-blur-md rounded-2xl px-6 py-5 sm:px-8 sm:py-6 md:px-12 md:py-8 border border-white/15 flex flex-col items-center gap-3 shadow-2xl">
-               <span className="text-white/50 text-sm font-medium tracking-widest uppercase">최종 점수</span>
-               <motion.span
-                 initial={{ scale: 0.5 }}
-                 animate={{ scale: 1 }}
-                 transition={{ type: "spring", damping: 12 }}
-                 className="text-white font-black text-3xl sm:text-4xl md:text-5xl tabular-nums"
-               >
-                 {score.toLocaleString()}
-               </motion.span>
-               {combo >= 3 && (
-                 <span className="text-cyan-400/80 text-sm font-medium">최고 콤보 달성!</span>
-               )}
-             </div>
+             {(() => {
+                const accuracy = totalWordsRef.current > 0 ? (scoredWordsRef.current.size / totalWordsRef.current) * 100 : 0;
+                let grade = 'F';
+                let gradeColor = '#6B7280';
+                if (accuracy >= 95) { grade = 'S'; gradeColor = '#FFD700'; }
+                else if (accuracy >= 85) { grade = 'A'; gradeColor = '#22D3EE'; }
+                else if (accuracy >= 70) { grade = 'B'; gradeColor = '#4ADE80'; }
+                else if (accuracy >= 50) { grade = 'C'; gradeColor = '#FB923C'; }
+                else if (accuracy >= 30) { grade = 'D'; gradeColor = '#F87171'; }
+
+                return (
+                  <div className="w-full max-w-2xl bg-black/40 backdrop-blur-md rounded-3xl p-8 sm:p-12 border border-white/10 shadow-2xl flex flex-col items-center text-center relative overflow-hidden">
+                     <div className="flex items-center gap-3 mb-8">
+                       <Trophy className="w-8 h-8 text-yellow-400" />
+                       <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-widest">노래 완료!</h2>
+                     </div>
+
+                     <motion.div 
+                       initial={{ scale: 0.5, opacity: 0 }}
+                       animate={{ scale: 1, opacity: 1 }}
+                       transition={{ delay: 0.2, type: "spring" }}
+                       className="mb-6"
+                     >
+                        <span className="text-[120px] sm:text-[150px] font-black leading-none" style={{ color: gradeColor, textShadow: `0 0 40px ${gradeColor}40` }}>
+                          {grade}
+                        </span>
+                     </motion.div>
+
+                     <div className="mb-10">
+                       <span className="text-white/50 text-sm font-medium tracking-widest uppercase block mb-1">최종 점수</span>
+                       <span className="text-white font-black text-4xl sm:text-6xl tabular-nums tracking-tight">
+                         {score.toLocaleString()}
+                       </span>
+                     </div>
+
+                     <div className="grid grid-cols-3 gap-4 w-full mb-10">
+                        <div className="bg-white/5 rounded-2xl p-4 flex flex-col items-center border border-white/5">
+                           <span className="text-white/40 text-xs font-bold mb-1">정확도</span>
+                           <span className="text-white font-bold text-xl sm:text-2xl">{accuracy.toFixed(1)}%</span>
+                        </div>
+                        <div className="bg-white/5 rounded-2xl p-4 flex flex-col items-center border border-white/5">
+                           <span className="text-white/40 text-xs font-bold mb-1">최고 콤보</span>
+                           <span className="text-white font-bold text-xl sm:text-2xl">{maxComboRef.current}x</span>
+                        </div>
+                        <div className="bg-white/5 rounded-2xl p-4 flex flex-col items-center border border-white/5">
+                           <span className="text-white/40 text-xs font-bold mb-1">채점 단어</span>
+                           <span className="text-white font-bold text-xl sm:text-2xl">{scoredWordsRef.current.size}<span className="text-white/30 text-base font-medium">/{totalWordsRef.current}</span></span>
+                        </div>
+                     </div>
+
+                     <div className="flex gap-4 w-full sm:w-auto">
+                       <button
+                         onClick={() => {
+                           handleRestart();
+                           dispatch(setGameStatus("playing"));
+                           setIsPlaying(true);
+                           if (audioRef.current) audioRef.current.play().catch(() => {});
+                         }}
+                         className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-8 py-4 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold transition-all active:scale-95"
+                       >
+                         <RotateCcw className="w-5 h-5" />
+                         다시 부르기
+                       </button>
+                        <button
+                         onClick={() => window.dispatchEvent(new Event("kero:skipForward"))}
+                         className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-8 py-4 bg-cyan-500 hover:bg-cyan-400 text-black rounded-xl font-bold transition-all active:scale-95 shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:shadow-[0_0_30px_rgba(6,182,212,0.5)]"
+                       >
+                         <SkipForward className="w-5 h-5" />
+                         다음 곡
+                       </button>
+                     </div>
+                  </div>
+                );
+             })()}
            </motion.div>
          )}
        </AnimatePresence>

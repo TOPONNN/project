@@ -121,11 +121,6 @@ export class RoomService {
   }
 
   async getRoomByCode(code: string): Promise<Room | null> {
-    const cached = await redis.get(`room:${code}`);
-    if (cached) {
-      return JSON.parse(cached);
-    }
-
     return roomRepository.findOne({
       where: { code },
       relations: ["participants", "currentSong"],

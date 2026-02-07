@@ -135,7 +135,7 @@ services:
     ports:
       - "7880:7880"
       - "7881:7881"
-      - "7882:7882/udp"
+      - "7882-7892:7882-7892/udp"
     volumes:
       - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
     networks:

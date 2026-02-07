@@ -129,7 +129,7 @@ export class LyricsQuizHandler {
      return this.quizStates.get(roomCode);
    }
 
-   async startGame(roomCode: string, songId?: string): Promise<void> {
+   async startGame(roomCode: string, songId?: string, _songData?: Record<string, unknown>, _queueItemId?: string): Promise<void> {
      const quizQuestionCount = songId ? 10 : 10;
      const questions = await songService.generateTJEnhancedQuiz(quizQuestionCount);
      if (questions.length === 0) {

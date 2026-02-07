@@ -7,8 +7,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { 
   Music, Target, MessageSquareText, ArrowLeft, Users, Copy, Check, 
-  Loader2, Play, Plus, X, Disc3, AlertCircle, ListMusic, Trash2, SkipForward,
-  Mic, MicOff, Video, CameraOff
+  Loader2, Play, Pause, Plus, X, Disc3, AlertCircle, ListMusic, Trash2, SkipForward,
+  Mic, MicOff, Video, CameraOff, Volume2, VolumeX
 } from "lucide-react";
 import type { RootState } from "@/store";
 import { setRoom } from "@/store/slices/roomSlice";
@@ -67,7 +67,7 @@ export default function RoomPage() {
   const dispatch = useDispatch();
   const code = params.code as string;
   
-  const { status: gameStatus, currentSong, songQueue } = useSelector((state: RootState) => state.game);
+  const { status: gameStatus, currentSong, songQueue, currentTime } = useSelector((state: RootState) => state.game);
   const { participants } = useSelector((state: RootState) => state.room);
   const { emitEvent } = useSocket(code);
   
@@ -113,6 +113,8 @@ export default function RoomPage() {
    const [mediaStatus, setMediaStatus] = useState({ isCameraOn: true, isMicOn: true });
    const [isQuizLoading, setIsQuizLoading] = useState(false);
    const [quizCount, setQuizCount] = useState(30);
+   const [volume, setVolume] = useState(1.0);
+   const [isPlaying, setIsPlaying] = useState(false);
 
    const isHost = participants.some(p => p.nickname === userName && p.isHost);
 
@@ -189,8 +191,35 @@ export default function RoomPage() {
    useEffect(() => {
      if (gameStatus === "playing") {
        setIsQuizLoading(false);
+       setIsPlaying(true);
+     } else {
+       setIsPlaying(false);
      }
    }, [gameStatus]);
+
+   const formatTime = (time: number) => {
+     const mins = Math.floor(time / 60);
+     const secs = Math.floor(time % 60);
+     return `${mins}:${secs.toString().padStart(2, "0")}`;
+   };
+
+   const handlePlayPause = () => {
+     setIsPlaying(!isPlaying);
+     window.dispatchEvent(new Event("kero:togglePlay"));
+   };
+
+   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+     const v = parseFloat(e.target.value);
+     setVolume(v);
+     window.dispatchEvent(new CustomEvent("kero:setVolume", { detail: { volume: v } }));
+   };
+
+   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+     if (!currentSong) return;
+     const rect = e.currentTarget.getBoundingClientRect();
+     const percent = (e.clientX - rect.left) / rect.width;
+     window.dispatchEvent(new CustomEvent("kero:seek", { detail: { progress: percent } }));
+   };
 
    // Auto-play next song when current song finishes
    useEffect(() => {
@@ -351,7 +380,11 @@ export default function RoomPage() {
     }, [dispatch, mountedRef, pollTimeoutRef]);
 
   const playSong = async (queueItem: typeof songQueue[0]) => {
-    if (queueItem.status !== "ready" || !queueItem.songId) return;
+    console.log("[playSong] Called with:", queueItem);
+    if (queueItem.status !== "ready" || !queueItem.songId) {
+      console.log("[playSong] Early return - status:", queueItem.status, "songId:", queueItem.songId);
+      return;
+    }
     
     try {
       const res = await fetch(`/api/songs/${queueItem.songId}`);
@@ -360,7 +393,7 @@ export default function RoomPage() {
       if (!data.success) return;
       
       const song = data.data;
-      dispatch(setCurrentSong({
+      const songData = {
         id: song.id,
         title: song.title,
         artist: song.artist,
@@ -387,7 +420,7 @@ export default function RoomPage() {
              
            })),
         })) || [],
-      }));
+      };
       
        if (room?.gameMode === "lyrics_quiz") {
          // Get all ready songs in queue for mixed quiz generation
@@ -420,13 +453,12 @@ export default function RoomPage() {
              };
            })));
          }
-       }
+      }
       
-      dispatch(removeFromQueue(queueItem.id));
-      dispatch(setGameStatus("playing"));
-      emitEvent("game:start", { roomCode: code, songId: queueItem.songId });
+      console.log("[playSong] Emitting game:start with songData:", songData);
+      emitEvent("game:start", { roomCode: code, songId: queueItem.songId, songData, queueItemId: queueItem.id });
     } catch (e) {
-      console.error("Error playing song:", e);
+      console.error("[playSong] Error:", e);
     }
   };
 
@@ -541,41 +573,196 @@ export default function RoomPage() {
           <ArrowLeft className="w-5 h-5" />
         </button>
 
-        <div className="absolute top-3 right-2 z-40 w-28 sm:w-48 flex flex-col rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black/40 backdrop-blur-md max-h-[70vh]">
-          <div className="w-full">
-            <VideoRoom
-              roomCode={code}
-              participantName={userName}
-              participantId={visitorId}
-              hideControls={true}
-              onStatusChange={setMediaStatus}
-            />
-          </div>
-          <div className="flex items-center justify-center gap-2 py-1.5 px-2 border-t border-white/10 bg-black/30">
-            <button 
-              onClick={handleMicToggle} 
-              className={`p-1 sm:p-1.5 rounded-full transition-all ${
-                mediaStatus.isMicOn 
-                  ? "text-white/70 hover:text-white hover:bg-white/10" 
-                  : "bg-red-500/80 text-white"
-              }`}
-              title={mediaStatus.isMicOn ? "마이크 끄기" : "마이크 켜기"}
-            >
-              {mediaStatus.isMicOn ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
-            </button>
-            <button 
-              onClick={handleCameraToggle} 
-              className={`p-1 sm:p-1.5 rounded-full transition-all ${
-                mediaStatus.isCameraOn 
-                  ? "text-white/70 hover:text-white hover:bg-white/10" 
-                  : "bg-red-500/80 text-white"
-              }`}
-              title={mediaStatus.isCameraOn ? "카메라 끄기" : "카메라 켜기"}
-            >
-              {mediaStatus.isCameraOn ? <Video className="w-3.5 h-3.5" /> : <CameraOff className="w-3.5 h-3.5" />}
-            </button>
+        <button
+          onClick={() => setShowAddSong(true)}
+          className="absolute top-6 right-6 z-50 p-4 rounded-full text-black shadow-lg shadow-black/20 hover:scale-110 active:scale-95 transition-all group"
+          style={{ backgroundColor: config.color }}
+          title="노래 예약하기"
+        >
+          <Plus className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" />
+        </button>
+
+        {/* Song Info Bar (Top-Center) */}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30">
+          {currentSong && (
+            <div className="flex items-center gap-3 px-5 py-3 bg-black/80 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl">
+              <div className="flex items-center gap-1.5 bg-white text-black px-3 py-1 rounded-lg">
+                <Music className="w-3.5 h-3.5" />
+                <span className="text-xs font-bold">현재곡</span>
+              </div>
+              <span className="text-lg font-bold text-white">{currentSong.title}</span>
+              <span className="text-base font-medium text-lime-400">{currentSong.artist}</span>
+              {songQueue.length > 0 && (
+                <>
+                  <div className="w-px h-6 bg-white/20" />
+                  <span className="text-xs text-white/50">다음:</span>
+                  <span className="text-sm text-white/70 max-w-[100px] truncate">{songQueue[0].title}</span>
+                </>
+              )}
+            </div>
+          )}
+          
+          {!currentSong && songQueue.length > 0 && (
+            <div className="flex items-center gap-3 px-5 py-3 bg-black/80 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl">
+              <div className="flex items-center gap-1.5 bg-yellow-400 text-black px-3 py-1 rounded-lg">
+                <span className="text-xs font-bold">다음곡</span>
+              </div>
+              <span className="text-lg font-bold text-white">{songQueue[0].title}</span>
+              <span className="text-base font-medium text-white/60">{songQueue[0].artist}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Camera Stack (Right Side) */}
+        <div className="absolute right-5 top-1/2 -translate-y-1/2 z-30 flex flex-col justify-center h-[70vh] pointer-events-auto">
+          <VideoRoom
+            roomCode={code}
+            participantName={userName}
+            participantId={visitorId}
+            hideControls={true}
+            layout="column"
+            onStatusChange={setMediaStatus}
+          />
+        </div>
+
+        {/* Bottom Playback Bar */}
+        <div className="absolute bottom-0 left-0 right-0 z-40 px-6 py-6 bg-gradient-to-t from-black via-black/95 to-transparent">
+          <div className="max-w-5xl mx-auto flex items-center gap-6">
+            
+            {/* Left: Mic/Camera Controls */}
+            <div className="flex items-center gap-3 bg-white/5 px-4 py-2 rounded-full border border-white/5 backdrop-blur-sm shadow-xl">
+               <button 
+                 onClick={handleMicToggle} 
+                 className={`p-2.5 rounded-full transition-all duration-200 ${
+                   mediaStatus.isMicOn 
+                     ? "bg-white/10 hover:bg-white/20 text-white" 
+                     : "bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20"
+                 }`}
+                 title={mediaStatus.isMicOn ? "마이크 끄기" : "마이크 켜기"}
+               >
+                 {mediaStatus.isMicOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+               </button>
+               <button 
+                 onClick={handleCameraToggle} 
+                 className={`p-2.5 rounded-full transition-all duration-200 ${
+                   mediaStatus.isCameraOn 
+                     ? "bg-white/10 hover:bg-white/20 text-white" 
+                     : "bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20"
+                 }`}
+                 title={mediaStatus.isCameraOn ? "카메라 끄기" : "카메라 켜기"}
+               >
+                 {mediaStatus.isCameraOn ? <Video className="w-5 h-5" /> : <CameraOff className="w-5 h-5" />}
+               </button>
+            </div>
+
+            {currentSong ? (
+              <>
+                {/* Center: Progress Bar */}
+                <div className="flex-1 flex items-center gap-4 bg-white/5 px-6 py-3 rounded-2xl border border-white/5 backdrop-blur-sm shadow-xl">
+                  <span className="text-xs font-mono text-white/50 w-10 text-right">{formatTime(currentTime)}</span>
+                  <div 
+                    className="flex-1 h-1.5 bg-white/10 rounded-full cursor-pointer relative group"
+                    onClick={handleSeek}
+                  >
+                    <div className="absolute inset-0 bg-white/5 rounded-full" />
+                    <div 
+                      className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full relative transition-all duration-100 ease-linear shadow-[0_0_10px_rgba(59,130,246,0.5)]"
+                      style={{ width: `${currentSong.duration ? (currentTime / currentSong.duration) * 100 : 0}%` }}
+                    >
+                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity scale-125" />
+                    </div>
+                  </div>
+                  <span className="text-xs font-mono text-white/50 w-10">{formatTime(currentSong.duration)}</span>
+                </div>
+
+                {/* Right: Play Controls */}
+                <div className="flex items-center gap-4 bg-white/5 px-5 py-2 rounded-full border border-white/5 backdrop-blur-sm shadow-xl">
+                   <div className="flex items-center gap-2 group/vol relative">
+                       <button onClick={() => {
+                         const newVol = volume === 0 ? 1 : 0;
+                         setVolume(newVol);
+                         window.dispatchEvent(new CustomEvent("kero:setVolume", { detail: { volume: newVol } }));
+                       }} className="p-2 text-white/50 hover:text-white transition-colors">
+                         {volume === 0 ? <VolumeX className="w-5 h-5"/> : <Volume2 className="w-5 h-5"/>}
+                       </button>
+                       <div className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 ease-out">
+                         <input 
+                           type="range" 
+                           min="0" 
+                           max="1" 
+                           step="0.01" 
+                           value={volume} 
+                           onChange={handleVolumeChange} 
+                           className="w-20 h-1 accent-white cursor-pointer" 
+                         />
+                       </div>
+                   </div>
+
+                   <div className="w-px h-6 bg-white/10" />
+
+                   <button 
+                     onClick={handlePlayPause}
+                     className="w-10 h-10 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-lg shadow-white/20"
+                   >
+                     {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
+                   </button>
+                   
+                   <button 
+                     onClick={() => window.dispatchEvent(new Event("kero:skipForward"))}
+                     className="p-2 text-white/50 hover:text-white hover:text-red-400 transition-colors"
+                     title="다음 곡으로 넘기기"
+                   >
+                     <SkipForward className="w-5 h-5"/>
+                   </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-white/30 text-sm font-medium italic">
+                {room?.gameMode === "lyrics_quiz" ? "퀴즈 진행 중..." : "노래를 선택해주세요"}
+              </div>
+            )}
           </div>
         </div>
+
+        <AnimatePresence>
+          {showAddSong && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+              onClick={() => setShowAddSong(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="w-full max-w-2xl bg-zinc-900 border border-white/10 rounded-2xl overflow-hidden shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between p-4 border-b border-white/10">
+                  <h2 className="text-xl font-bold flex items-center gap-2 text-white">
+                    <span className="text-2xl">🎤</span> 곡 검색
+                  </h2>
+                  <button 
+                    onClick={() => setShowAddSong(false)}
+                    className="p-2 rounded-full hover:bg-white/10 transition-colors text-white"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="p-4 max-h-[70vh] overflow-y-auto">
+                  <KaraokeSongSearch
+                    onSelect={addSongToQueue}
+                    isLoading={searching}
+                    accentColor={config.color}
+                  />
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
       </div>
     );
   }

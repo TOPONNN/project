@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { usePresence, EmojiData } from "../PresenceProvider";
 import { useMediaQuery } from "../../hooks/use-media-query";
@@ -11,11 +11,18 @@ interface RemoteEmoji extends EmojiData {
   id: string;
 }
 
+const normalizePathWithoutTrailingSlash = (path: string | undefined | null): string => {
+  if (!path) return "/";
+  return path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
+};
+
 export default function RemoteCursors() {
   const { users, socketId, registerEmojiListener } = usePresence();
   const pathname = usePathname();
   const isMobile = useMediaQuery("(max-width: 768px)");
   const [remoteEmojis, setRemoteEmojis] = useState<RemoteEmoji[]>([]);
+
+  const normalizedPathname = useMemo(() => normalizePathWithoutTrailingSlash(pathname), [pathname]);
 
   useEffect(() => {
     return registerEmojiListener((data) => {
@@ -35,7 +42,7 @@ export default function RemoteCursors() {
           .filter(
             (user) =>
               user.socketId !== socketId &&
-              user.currentPage === pathname &&
+              normalizePathWithoutTrailingSlash(user.currentPage) === normalizedPathname &&
               user.posX !== undefined &&
               user.posY !== undefined
           )

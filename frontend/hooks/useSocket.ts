@@ -16,6 +16,7 @@ import {
   addToQueue,
   removeFromQueue,
   updateQueueItem,
+  setQueue,
 } from "@/store/slices/gameSlice";
 
 export function useSocket(roomCode: string | null) {
@@ -69,9 +70,32 @@ export function useSocket(roomCode: string | null) {
       window.location.href = "/lobby";
     });
 
+    socket.on("error", (data: { message: string }) => {
+      console.error("[Socket Error]", data.message);
+      alert(data.message);
+    });
+
     socket.on("game:started", (data) => {
+      console.log("[useSocket] game:started received:", data);
       dispatch(setGameStatus("playing"));
       dispatch(setCurrentSong(data.song));
+      if (data.queueItemId) {
+        dispatch(removeFromQueue(data.queueItemId));
+      }
+    });
+
+    socket.on("game:sync-state", (data: { song: any; status: "playing" | "paused"; currentTime?: number; queue?: any[] }) => {
+      console.log("[useSocket] game:sync-state received:", data);
+      dispatch(setGameStatus(data.status));
+      dispatch(setCurrentSong(data.song));
+      if (typeof data.currentTime === "number") {
+        dispatch(updateCurrentTime(data.currentTime));
+        // Dispatch custom event for player to seek
+        window.dispatchEvent(new CustomEvent("kero:syncTime", { detail: { time: data.currentTime } }));
+      }
+      if (Array.isArray(data.queue)) {
+        dispatch(setQueue(data.queue));
+      }
     });
 
     socket.on("game:paused", () => {
@@ -152,7 +176,10 @@ export function useSocket(roomCode: string | null) {
   const emitEvent = useCallback((event: string, data?: unknown) => {
     const socket = getSocket();
     if (socket.connected) {
+      console.log("[emitEvent]", event, data);
       socket.emit(event, data);
+    } else {
+      console.warn("[emitEvent] Socket not connected, cannot emit:", event);
     }
   }, []);
 
