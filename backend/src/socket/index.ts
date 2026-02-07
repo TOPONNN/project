@@ -194,10 +194,21 @@ export function initializeSocket(httpServer: HttpServer): Server {
       const participantId = socket.data.participantId;
       
       if (roomCode && participantId) {
-        await roomService.leaveRoom(roomCode, participantId);
+        const result = await roomService.leaveRoom(roomCode, participantId);
         socket.leave(roomCode);
-        io.to(roomCode).emit("room:participant:left", participantId);
-        await redisPubSub.publishParticipantLeft(roomCode, participantId);
+
+        if (result.roomClosed) {
+          io.to(roomCode).emit("room:closed", { reason: "호스트가 방을 나갔습니다." });
+          const socketsInRoom = await io.in(roomCode).fetchSockets();
+          for (const s of socketsInRoom) {
+            s.leave(roomCode);
+            s.data.roomCode = null;
+            s.data.participantId = null;
+          }
+        } else {
+          io.to(roomCode).emit("room:participant:left", participantId);
+          await redisPubSub.publishParticipantLeft(roomCode, participantId);
+        }
       }
     });
 
@@ -285,9 +296,20 @@ export function initializeSocket(httpServer: HttpServer): Server {
       socket.on("disconnect", async () => {
         const { roomCode, participantId } = socket.data;
         if (roomCode && participantId) {
-          await roomService.leaveRoom(roomCode, participantId);
-          io.to(roomCode).emit("room:participant:left", participantId);
-          await redisPubSub.publishParticipantLeft(roomCode, participantId);
+          const result = await roomService.leaveRoom(roomCode, participantId);
+
+          if (result.roomClosed) {
+            io.to(roomCode).emit("room:closed", { reason: "호스트가 연결이 끊어졌습니다." });
+            const socketsInRoom = await io.in(roomCode).fetchSockets();
+            for (const s of socketsInRoom) {
+              s.leave(roomCode);
+              s.data.roomCode = null;
+              s.data.participantId = null;
+            }
+          } else {
+            io.to(roomCode).emit("room:participant:left", participantId);
+            await redisPubSub.publishParticipantLeft(roomCode, participantId);
+          }
         }
         onlineUsers.delete(socket.id);
         broadcastPresence();

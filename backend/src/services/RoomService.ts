@@ -83,21 +83,41 @@ export class RoomService {
     return participantRepository.save(participant);
   }
 
-  async leaveRoom(roomCode: string, participantId: number): Promise<void> {
-    await participantRepository.update(participantId, { isConnected: false });
+  async leaveRoom(roomCode: string, participantId: number): Promise<{ roomClosed: boolean }> {
+    const participant = await participantRepository.findOne({
+      where: { id: participantId },
+      relations: ["room"],
+    });
+
+    if (!participant) {
+      return { roomClosed: false };
+    }
 
     const room = await roomRepository.findOne({
       where: { code: roomCode },
       relations: ["participants"],
     });
 
-    if (room) {
-      const activeParticipants = room.participants.filter((p) => p.isConnected);
-      if (activeParticipants.length === 0) {
-        room.status = RoomStatus.FINISHED;
-        await roomRepository.save(room);
-      }
+    if (!room) {
+      return { roomClosed: false };
     }
+
+    if (participant.isHost) {
+      await participantRepository.delete({ roomId: room.id });
+      await roomRepository.delete({ id: room.id });
+      await redis.del(`room:${roomCode}`);
+      return { roomClosed: true };
+    }
+
+    await participantRepository.update(participantId, { isConnected: false });
+
+    const activeParticipants = room.participants.filter((p) => p.isConnected && p.id !== participantId);
+    if (activeParticipants.length === 0) {
+      room.status = RoomStatus.FINISHED;
+      await roomRepository.save(room);
+    }
+
+    return { roomClosed: false };
   }
 
   async getRoomByCode(code: string): Promise<Room | null> {

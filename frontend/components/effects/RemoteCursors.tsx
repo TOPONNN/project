@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { usePresence, EmojiData } from "../PresenceProvider";
 import { useMediaQuery } from "../../hooks/use-media-query";
 import { MousePointer2 } from "lucide-react";
@@ -12,6 +13,7 @@ interface RemoteEmoji extends EmojiData {
 
 export default function RemoteCursors() {
   const { users, socketId, registerEmojiListener } = usePresence();
+  const pathname = usePathname();
   const isMobile = useMediaQuery("(max-width: 768px)");
   const [remoteEmojis, setRemoteEmojis] = useState<RemoteEmoji[]>([]);
 
@@ -33,6 +35,7 @@ export default function RemoteCursors() {
           .filter(
             (user) =>
               user.socketId !== socketId &&
+              user.currentPage === pathname &&
               user.posX !== undefined &&
               user.posY !== undefined
           )

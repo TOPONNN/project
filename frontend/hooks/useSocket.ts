@@ -3,7 +3,7 @@
 import { useEffect, useCallback } from "react";
 import { useDispatch } from "react-redux";
 import { getSocket, connectSocket, disconnectSocket } from "@/lib/socket";
-import { setRoom, addParticipant, removeParticipant, setRoomStatus, setConnected } from "@/store/slices/roomSlice";
+import { setRoom, addParticipant, removeParticipant, setRoomStatus, setConnected, leaveRoom as leaveRoomAction } from "@/store/slices/roomSlice";
 import { 
   setGameStatus, 
   setCurrentSong, 
@@ -61,6 +61,12 @@ export function useSocket(roomCode: string | null) {
 
     socket.on("room:participant:left", (participantId) => {
       dispatch(removeParticipant(participantId));
+    });
+
+    socket.on("room:closed", (data: { reason: string }) => {
+      dispatch(leaveRoomAction());
+      alert(data.reason);
+      window.location.href = "/lobby";
     });
 
     socket.on("game:started", (data) => {
