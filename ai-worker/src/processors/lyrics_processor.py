@@ -362,11 +362,12 @@ class LyricsProcessor:
             )
             onset_times = librosa.frames_to_time(onset_frames, sr=sr, hop_length=256)
 
-            tolerance = 0.15  # ±150ms snap window
+            tolerance = 0.15  # ±150ms snap window for most words
+            first_line_tolerance = 0.5  # ±500ms for the first word of the first line
             total_snapped = 0
             total_words = 0
 
-            for segment in segments:
+            for seg_idx, segment in enumerate(segments):
                 words = segment.get("words", [])
                 line_start = segment["start_time"]
                 line_end = segment["end_time"]
@@ -375,17 +376,28 @@ class LyricsProcessor:
                     total_words += 1
                     start = word["start_time"]
 
+                    # Use wider tolerance for the very first word of the first line
+                    # SOFA's Viterbi can place the first phoneme late when preceded
+                    # by trimmed intro silence; a wider window lets energy-onset
+                    # correction pull it back to the actual vocal start.
+                    is_first_word = (seg_idx == 0 and i == 0)
+                    tol = first_line_tolerance if is_first_word else tolerance
+
                     # Find nearest onset within tolerance
                     if len(onset_times) > 0:
                         diffs = np.abs(onset_times - start)
                         min_idx = np.argmin(diffs)
-                        if diffs[min_idx] <= tolerance:
+                        if diffs[min_idx] <= tol:
                             new_start = float(onset_times[min_idx])
                             # Don't snap before line start or before previous word's end
                             prev_end = words[i - 1]["end_time"] if i > 0 else line_start
-                            if new_start >= prev_end:
+                            # For the first word, allow snapping before the original line_start
+                            floor = prev_end if not is_first_word else max(0.0, start - first_line_tolerance)
+                            if new_start >= floor:
                                 word["start_time"] = round(new_start, 3)
                                 total_snapped += 1
+                                if is_first_word:
+                                    print(f"[Refine] First word snapped: {start:.3f}s → {new_start:.3f}s (delta={new_start - start:+.3f}s)")
 
                 # After snapping starts, adjust end times to be seamless
                 for i in range(len(words) - 1):

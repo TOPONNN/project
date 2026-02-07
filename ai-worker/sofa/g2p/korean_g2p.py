@@ -2,7 +2,8 @@
 Korean Grapheme-to-Phoneme converter for SOFA forced aligner.
 
 Pure Python implementation using Unicode math for Hangul decomposition.
-No external dependencies required.
+Includes approximate English-to-Korean phoneme mapping for mixed-language
+lyrics (pop songs often contain "oh", "baby", "yeah", etc.).
 """
 
 from __future__ import annotations
@@ -14,6 +15,11 @@ class KoreanG2P:
     Converts Korean text (Hangul) to a phoneme sequence suitable for
     SOFA's forced alignment pipeline. Uses Unicode block arithmetic
     to decompose Hangul syllables into onset/nucleus/coda components.
+
+    Non-Hangul characters (English letters, digits) are mapped to their
+    closest Korean phoneme equivalents so every word produces at least
+    one phoneme for alignment.  Without this, English-only words like
+    "oh" or "baby" would get zero phonemes and create timing drift.
 
     No pronunciation rules are applied (no 연음, 경음화, etc.) —
     this is a direct grapheme-level decomposition.
@@ -65,14 +71,178 @@ class KoreanG2P:
         'T',  # 27: ㅎ
     ]
 
+    # ----------------------------------------------------------------
+    # English → Korean phoneme approximation table
+    # Maps each Latin letter to the closest phoneme(s) in the Korean
+    # SOFA vocabulary.  The goal is NOT perfect pronunciation but rather
+    # providing *some* phonemes so the aligner can assign acoustic
+    # frames to English words instead of skipping them entirely.
+    # ----------------------------------------------------------------
+    _ENGLISH_PHONEME_MAP: dict[str, list[str]] = {
+        # Consonants — mapped to closest Korean onset/coda
+        'b': ['b'],
+        'c': ['k'],       # hard c → ㅋ
+        'd': ['d'],
+        'f': ['p'],       # no f in Korean; closest labial = ㅍ
+        'g': ['g'],
+        'h': ['h'],
+        'j': ['j'],
+        'k': ['k'],
+        'l': ['L'],       # coda ㄹ
+        'm': ['m'],
+        'n': ['n'],
+        'p': ['p'],
+        'q': ['k'],       # q → k
+        'r': ['r'],
+        's': ['s'],
+        't': ['t'],
+        'v': ['b'],       # no v in Korean; closest = ㅂ
+        'w': ['u'],       # semivowel w → 우
+        'x': ['k', 's'],  # x ≈ ks
+        'z': ['j'],       # z → ㅈ
+        # Vowels — mapped to closest Korean nucleus
+        'a': ['a'],
+        'e': ['e'],
+        'i': ['i'],
+        'o': ['o'],
+        'u': ['u'],
+        'y': ['i'],       # y as vowel → 이
+    }
+
+    # Common English words in Korean pop lyrics → pre-defined phoneme
+    # sequences for better alignment quality.  These are rough Korean
+    # transliterations, not linguistic transcriptions.
+    _ENGLISH_WORD_MAP: dict[str, list[str]] = {
+        # Exclamations / fillers
+        'oh':    ['o'],
+        'ah':    ['a'],
+        'uh':    ['eo'],
+        'eh':    ['e'],
+        'ooh':   ['u'],
+        'woo':   ['u'],
+        'whoa':  ['wa'],
+        'wow':   ['wa', 'u'],
+        'hey':   ['h', 'e', 'i'],
+        'yay':   ['ya', 'i'],
+        'yo':    ['yo'],
+        'na':    ['n', 'a'],
+        'la':    ['r', 'a'],
+        'da':    ['d', 'a'],
+        # Common pop words
+        'yeah':  ['ya'],
+        'yeh':   ['ye'],
+        'baby':  ['b', 'e', 'i', 'b', 'i'],
+        'babe':  ['b', 'e', 'i', 'b'],
+        'love':  ['r', 'eo', 'b'],
+        'girl':  ['g', 'eo', 'L'],
+        'boy':   ['b', 'o', 'i'],
+        'my':    ['m', 'a', 'i'],
+        'me':    ['m', 'i'],
+        'you':   ['yu'],
+        'we':    ['wi'],
+        'no':    ['n', 'o'],
+        'go':    ['g', 'o'],
+        'so':    ['s', 'o'],
+        'do':    ['d', 'u'],
+        'know':  ['n', 'o'],
+        'say':   ['s', 'e', 'i'],
+        'stay':  ['s', 'eu', 't', 'e', 'i'],
+        'day':   ['d', 'e', 'i'],
+        'way':   ['u', 'e', 'i'],
+        'come':  ['k', 'eo', 'M'],
+        'one':   ['u', 'a', 'N'],
+        'time':  ['t', 'a', 'i', 'M'],
+        'night': ['n', 'a', 'i', 'T'],
+        'light': ['r', 'a', 'i', 'T'],
+        'right': ['r', 'a', 'i', 'T'],
+        'life':  ['r', 'a', 'i', 'P'],
+        'heart': ['h', 'a', 'T'],
+        'stop':  ['s', 'eu', 't', 'a', 'P'],
+        'feel':  ['p', 'i', 'L'],
+        'real':  ['r', 'i', 'eo', 'L'],
+        'fly':   ['p', 'eu', 'r', 'a', 'i'],
+        'cry':   ['k', 'eu', 'r', 'a', 'i'],
+        'try':   ['t', 'eu', 'r', 'a', 'i'],
+        'why':   ['u', 'a', 'i'],
+        'high':  ['h', 'a', 'i'],
+        'fire':  ['p', 'a', 'i', 'eo'],
+        'more':  ['m', 'o', 'eo'],
+        'like':  ['r', 'a', 'i', 'K'],
+        'take':  ['t', 'e', 'i', 'K'],
+        'make':  ['m', 'e', 'i', 'K'],
+        'break': ['b', 'eu', 'r', 'e', 'i', 'K'],
+        'dance': ['d', 'ae', 'N', 's', 'eu'],
+        'chance':['ch', 'ae', 'N', 's', 'eu'],
+        'forever': ['p', 'o', 'r', 'e', 'b', 'eo'],
+        'never': ['n', 'e', 'b', 'eo'],
+        'ever':  ['e', 'b', 'eo'],
+        'over':  ['o', 'b', 'eo'],
+        'under': ['eo', 'N', 'd', 'eo'],
+        'away':  ['eo', 'u', 'e', 'i'],
+        'tonight': ['t', 'u', 'n', 'a', 'i', 'T'],
+        'alright': ['o', 'L', 'r', 'a', 'i', 'T'],
+        'hello': ['h', 'e', 'L', 'r', 'o'],
+        'world': ['u', 'eo', 'L', 'd', 'eu'],
+        'only':  ['o', 'N', 'r', 'i'],
+        'just':  ['j', 'eo', 's', 'eu', 'T'],
+        'wanna': ['u', 'a', 'n', 'a'],
+        'gonna': ['g', 'o', 'n', 'a'],
+        'gotta': ['g', 'a', 't', 'a'],
+        'lala':  ['r', 'a', 'r', 'a'],
+        'lalala':['r', 'a', 'r', 'a', 'r', 'a'],
+        'nanana':['n', 'a', 'n', 'a', 'n', 'a'],
+    }
+
     def __init__(self, **kwargs: object) -> None:
         pass
+
+    def _english_char_to_phonemes(self, char: str) -> list[str]:
+        """Map a single English letter to approximate Korean phoneme(s).
+
+        Args:
+            char: A single ASCII letter (already lowercased by caller).
+
+        Returns:
+            List of Korean phonemes.  Empty list for unmappable chars.
+        """
+        return list(self._ENGLISH_PHONEME_MAP.get(char.lower(), []))
+
+    def _english_word_to_phonemes(self, word: str) -> list[str]:
+        """Convert an English word to approximate Korean phonemes.
+
+        First checks the common-word lookup table, then falls back to
+        per-character mapping.
+
+        Args:
+            word: An English word (may contain mixed case).
+
+        Returns:
+            List of Korean phonemes.
+        """
+        lower = word.lower()
+
+        # 1. Check exact match in common word table
+        if lower in self._ENGLISH_WORD_MAP:
+            return list(self._ENGLISH_WORD_MAP[lower])
+
+        # 2. Per-character fallback
+        phonemes: list[str] = []
+        for ch in lower:
+            mapped = self._ENGLISH_PHONEME_MAP.get(ch)
+            if mapped:
+                phonemes.extend(mapped)
+        return phonemes
 
     def _g2p(self, input_text: str) -> tuple[list[str], list[str], list[int]]:
         """Convert Korean text to SOFA phoneme sequence.
 
+        Handles mixed Korean/English text.  Hangul syllables are decomposed
+        into Korean phonemes; English letters are mapped to approximate
+        Korean phoneme equivalents.  This ensures every word gets at least
+        one phoneme for alignment.
+
         Args:
-            input_text: Korean text (e.g., "안녕하세요 반갑습니다")
+            input_text: Text (e.g., "oh 사랑해 baby")
 
         Returns:
             Tuple of:
@@ -94,12 +264,48 @@ class KoreanG2P:
         for word_idx, word in enumerate(words):
             word_seq.append(word)
 
+            # Separate the word into runs of Hangul vs non-Hangul
+            hangul_phonemes: list[str] = []
+            non_hangul_chars: list[str] = []
+
             for char in word:
                 if self._is_hangul(char):
+                    # Flush any pending non-Hangul characters first
+                    if non_hangul_chars:
+                        eng_phs = self._english_word_to_phonemes(
+                            ''.join(non_hangul_chars)
+                        )
+                        if eng_phs:
+                            ph_seq.extend(eng_phs)
+                            ph_idx_to_word_idx.extend(
+                                [word_idx] * len(eng_phs)
+                            )
+                        non_hangul_chars = []
+
                     phonemes = self._syllable_to_phonemes(char)
                     ph_seq.extend(phonemes)
                     ph_idx_to_word_idx.extend([word_idx] * len(phonemes))
-                # Non-Hangul characters (English, numbers, punctuation) are skipped
+                elif char.isalpha() or char.isdigit():
+                    non_hangul_chars.append(char)
+                # Pure punctuation is still skipped
+
+            # Flush remaining non-Hangul chars at end of word
+            if non_hangul_chars:
+                eng_phs = self._english_word_to_phonemes(
+                    ''.join(non_hangul_chars)
+                )
+                if eng_phs:
+                    ph_seq.extend(eng_phs)
+                    ph_idx_to_word_idx.extend([word_idx] * len(eng_phs))
+
+            # If the word produced zero phonemes (e.g., pure punctuation),
+            # add a minimal vowel phoneme so the aligner can still place it
+            word_phoneme_count = sum(
+                1 for idx in ph_idx_to_word_idx if idx == word_idx
+            )
+            if word_phoneme_count == 0:
+                ph_seq.append('eo')  # schwa-like fallback
+                ph_idx_to_word_idx.append(word_idx)
 
             # Add SP separator after each word
             ph_seq.append('SP')
