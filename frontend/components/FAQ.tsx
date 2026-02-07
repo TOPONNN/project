@@ -9,7 +9,7 @@ import RevealAnimation from "@/components/animations/RevealAnimation";
 const FAQS = [
   { q: "어떤 기술스택을 사용했나요?", a: "프론트엔드는 Next.js 15 + React 19 + Redux Toolkit, 백엔드는 Express.js + LiveKit + Redis + RabbitMQ + MySQL, AI는 Mel-band Roformer, SOFA, FCPE를 Flask + Celery GPU 워커로 처리합니다. 인프라는 Docker Compose + Jenkins CI/CD + Nginx + AWS EC2/S3 + ELK Stack으로 구성됩니다." },
   { q: "프로젝트 개발기간은?", a: "2026.01.12 ~ 2026.02.09, 약 4주간의 기획, 디자인, 개발 과정을 거쳐 완성되었습니다." },
-  { q: "AI 기능은 무엇인가요?", a: "Mel-band Roformer로 보컬/MR 고품질 분리, SOFA로 음절 단위 가사 자동 싱크, FCPE로 실시간 음정 분석 및 점수 계산을 제공합니다." },
+  { q: "AI 기능은 무엇인가요?", a: "Mel-band Roformer로 보컬/MR 고품질 분리, SOFA로 음소 단위 가사 자동 싱크, FCPE로 실시간 음정 분석 및 점수 계산을 제공합니다." },
   { q: "퀴즈 모드는 어떻게 동작하나요?", a: "TJ 노래방 인기 차트에서 곡을 가져와 가사 빈칸, 제목 맞추기, 가수 맞추기, 초성 퀴즈, 가사 순서, O/X 퀴즈 총 6종류를 생성합니다. yt-dlp로 오디오를 스트리밍하며 Kahoot 스타일로 실시간 대결합니다." },
   { q: "일본곡도 지원하나요?", a: "네, TJ 노래방 J-POP 차트를 연동하여 일본곡 퀴즈와 일반 노래방을 지원합니다. 일본어 가사 위에 한국어 발음이 자동 표시되고, 아티스트명도 한국어로 번역됩니다." },
   { q: "동시 접속 인원은 몇 명인가요?", a: "한 방에 최대 6명까지 동시 접속하여 화상으로 소통하며 함께 노래할 수 있습니다." },

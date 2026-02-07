@@ -27,7 +27,7 @@ const FEATURES = [
   {
     icon: FileText,
     title: "가사 자동 싱크",
-    description: "SOFA가 노래에서 가사를 음절 단위로 정확하게 싱크합니다. 실시간 색채움 효과로 노래를 따라가세요.",
+    description: "SOFA가 노래에서 가사를 음소 단위로 정확하게 싱크합니다. 실시간 색채움 효과로 노래를 따라가세요.",
     accent: "#74AA9C",
   },
   {
