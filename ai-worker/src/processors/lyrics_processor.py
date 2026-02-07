@@ -348,13 +348,89 @@ class LyricsProcessor:
             char_offset += chars
         return word_timings
 
+    def _find_vocal_onset_rms(
+        self,
+        y: "np.ndarray",
+        sr: int,
+        search_start: float,
+        search_end: float,
+    ) -> Optional[float]:
+        """Find the earliest vocal onset using fine-grained RMS threshold crossing.
+
+        CTC+Viterbi aligners tend to place the first phoneme late because the
+        optimal path prefers blank tokens until evidence is very strong.
+        ``librosa.onset_detect`` finds *peaks* in onset strength, but vocal
+        onsets are often gradual — we need the *first moment energy rises above
+        a threshold*, not the peak.
+
+        Algorithm:
+          1. Extract the search window from the waveform.
+          2. Compute RMS with a very fine hop (64 samples ≈ 4 ms at 16 kHz).
+          3. Determine a threshold from the window's energy distribution:
+             ``median(top-50% RMS) × 0.10`` — catches quiet consonant onsets.
+          4. Find the first frame where RMS stays above threshold for ≥3
+             consecutive frames (≈12 ms) to avoid noise spikes.
+          5. Return that time as the vocal onset.
+
+        Args:
+            y: Full vocal waveform at *sr* Hz.
+            sr: Sample rate.
+            search_start: Start of search window in seconds.
+            search_end: End of search window in seconds.
+
+        Returns:
+            Onset time in seconds, or None if no onset found.
+        """
+        hop = 64  # ~4 ms at 16 kHz
+        consecutive_required = 3  # ~12 ms sustained
+
+        start_sample = max(0, int(search_start * sr))
+        end_sample = min(len(y), int(search_end * sr))
+        window = y[start_sample:end_sample]
+
+        if len(window) < hop * (consecutive_required + 2):
+            return None
+
+        # Fine-grained RMS
+        n_frames = len(window) // hop
+        rms = np.array([
+            np.sqrt(np.mean(window[i * hop:(i + 1) * hop] ** 2))
+            for i in range(n_frames)
+        ])
+
+        if len(rms) < consecutive_required + 1:
+            return None
+
+        # Threshold: 10% of the singing level in this window
+        rms_sorted = np.sort(rms)
+        top50_start = max(1, int(0.50 * len(rms_sorted)))
+        singing_level = float(np.median(rms_sorted[top50_start:]))
+        threshold = singing_level * 0.10
+
+        if threshold <= 0:
+            return None
+
+        # Find first sustained energy rise
+        consecutive = 0
+        for i in range(n_frames):
+            if rms[i] > threshold:
+                consecutive += 1
+                if consecutive >= consecutive_required:
+                    onset_frame = i - consecutive_required + 1
+                    onset_sec = search_start + (onset_frame * hop / sr)
+                    return round(onset_sec, 3)
+            else:
+                consecutive = 0
+
+        return None
+
     def _refine_with_energy_onsets(self, segments: List[Dict], vocals_path: str) -> List[Dict]:
         """Post-process: snap word start times to actual vocal energy onsets."""
         try:
             print(f"[Refine] Loading vocals for energy onset detection...")
             y, sr = librosa.load(vocals_path, sr=16000)
 
-            # Compute onset times using librosa
+            # Compute onset times using librosa (for general words)
             onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=256)
             onset_frames = librosa.onset.onset_detect(
                 onset_envelope=onset_env, sr=sr, hop_length=256,
@@ -376,28 +452,52 @@ class LyricsProcessor:
                     total_words += 1
                     start = word["start_time"]
 
-                    # Use wider tolerance for the very first word of the first line
-                    # SOFA's Viterbi can place the first phoneme late when preceded
-                    # by trimmed intro silence; a wider window lets energy-onset
-                    # correction pull it back to the actual vocal start.
                     is_first_word = (seg_idx == 0 and i == 0)
-                    tol = first_line_tolerance if is_first_word else tolerance
 
-                    # Find nearest onset within tolerance
-                    if len(onset_times) > 0:
-                        diffs = np.abs(onset_times - start)
-                        min_idx = np.argmin(diffs)
-                        if diffs[min_idx] <= tol:
-                            new_start = float(onset_times[min_idx])
-                            # Don't snap before line start or before previous word's end
-                            prev_end = words[i - 1]["end_time"] if i > 0 else line_start
-                            # For the first word, allow snapping before the original line_start
-                            floor = prev_end if not is_first_word else max(0.0, start - first_line_tolerance)
-                            if new_start >= floor:
-                                word["start_time"] = round(new_start, 3)
-                                total_snapped += 1
-                                if is_first_word:
-                                    print(f"[Refine] First word snapped: {start:.3f}s → {new_start:.3f}s (delta={new_start - start:+.3f}s)")
+                    if is_first_word:
+                        # --- Special handling for the first word ---
+                        # CTC+Viterbi systematically places the first phoneme
+                        # late due to blank-token bias. Use fine-grained RMS
+                        # threshold crossing to find the actual vocal onset.
+                        search_start = max(0.0, start - first_line_tolerance)
+                        search_end = start + 0.1  # slightly past Viterbi start
+                        rms_onset = self._find_vocal_onset_rms(
+                            y, sr, search_start, search_end
+                        )
+                        if rms_onset is not None and rms_onset < start:
+                            print(
+                                f"[Refine] First word RMS onset: {start:.3f}s → "
+                                f"{rms_onset:.3f}s (delta={rms_onset - start:+.3f}s)"
+                            )
+                            word["start_time"] = rms_onset
+                            total_snapped += 1
+                        else:
+                            # Fall back to librosa onset_detect
+                            if len(onset_times) > 0:
+                                diffs = np.abs(onset_times - start)
+                                min_idx = np.argmin(diffs)
+                                if diffs[min_idx] <= first_line_tolerance:
+                                    new_start = float(onset_times[min_idx])
+                                    floor = max(0.0, start - first_line_tolerance)
+                                    if new_start >= floor:
+                                        word["start_time"] = round(new_start, 3)
+                                        total_snapped += 1
+                                        print(
+                                            f"[Refine] First word onset fallback: "
+                                            f"{start:.3f}s → {new_start:.3f}s "
+                                            f"(delta={new_start - start:+.3f}s)"
+                                        )
+                    else:
+                        # --- Standard onset snap for other words ---
+                        if len(onset_times) > 0:
+                            diffs = np.abs(onset_times - start)
+                            min_idx = np.argmin(diffs)
+                            if diffs[min_idx] <= tolerance:
+                                new_start = float(onset_times[min_idx])
+                                prev_end = words[i - 1]["end_time"] if i > 0 else line_start
+                                if new_start >= prev_end:
+                                    word["start_time"] = round(new_start, 3)
+                                    total_snapped += 1
 
                 # After snapping starts, adjust end times to be seamless
                 for i in range(len(words) - 1):
