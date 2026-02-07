@@ -79,20 +79,41 @@ class SOFAAligner:
         return self._g2p
 
     def _get_infer_engine(self):
-        """Lazy-load ONNX inference engine."""
+        """Lazy-load ONNX inference engine with config from YAML."""
         if self._infer_engine is None:
             from sofa.inference.onnx_infer import SOFAOnnxInfer
+
+            # Load melspec config from model YAML to get scale_factor
+            scale_factor = 1.0
+            config_path = SOFA_DIR / "models" / "sofa_korean_config.yaml"
+            if config_path.exists():
+                try:
+                    with open(config_path, "r", encoding="utf-8") as f:
+                        config = yaml.safe_load(f)
+                    melspec_cfg = config.get("melspec_config", {})
+                    scale_factor = float(melspec_cfg.get("scale_factor", 1.0))
+                    logger.info(
+                        "Loaded melspec config from %s: scale_factor=%s",
+                        config_path, scale_factor,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to load melspec config from %s: %s — using scale_factor=1.0",
+                        config_path, e,
+                    )
 
             self._infer_engine = SOFAOnnxInfer(
                 model_path=self._model_path,
                 device=self._device,
                 sample_rate=_SOFA_SAMPLE_RATE,
                 hop_length=_SOFA_HOP_LENGTH,
+                scale_factor=scale_factor,
             )
             logger.info(
-                "Loaded SOFA ONNX engine (model=%s, device=%s)",
+                "Loaded SOFA ONNX engine (model=%s, device=%s, scale_factor=%s)",
                 self._model_path,
                 self._device,
+                scale_factor,
             )
         return self._infer_engine
 
