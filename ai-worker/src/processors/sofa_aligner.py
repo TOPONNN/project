@@ -368,10 +368,14 @@ class SOFAAligner:
     def _detect_and_trim_intro(
         waveform: "np.ndarray",
         min_intro_sec: float = 8.0,
-        preroll_sec: float = 0.5,
-        sustained_frames: int = 10,
+        preroll_sec: float = 2.0,
+        sustained_frames: int = 15,
     ) -> float:
         """Detect leading non-vocal silence and return trim offset in seconds.
+
+        Vocal separation (mel-band-roformer) often leaves low-level bleed
+        from instruments, so we use an aggressive threshold to distinguish
+        actual singing from residual bleed.
 
         Only trims if the detected intro silence is at least *min_intro_sec*
         long, to avoid false-positives on songs that start immediately.
@@ -401,11 +405,16 @@ class SOFAAligner:
             for i in range(num_frames)
         ])
 
-        # Adaptive threshold: 5% of the 95th-percentile RMS
-        # (robust to occasional loud frames in silence)
+        # Two-stage threshold to handle vocal-stem bleed:
+        # 1. Compute median RMS of the loudest 20% of frames (= singing level)
         rms_sorted = np.sort(rms)
-        p95 = float(rms_sorted[int(0.95 * len(rms_sorted))])
-        threshold = p95 * 0.05
+        top20_start = int(0.80 * len(rms_sorted))
+        singing_level = float(np.median(rms_sorted[top20_start:]))
+        # 2. Threshold at 8% of singing level — catches quiet vocal entries
+        #    while still ignoring low-level instrumental bleed
+        threshold = singing_level * 0.08
+
+        print(f"[SOFA Trim] singing_level={singing_level:.4f}, threshold={threshold:.4f}")
 
         # Find first frame where RMS stays above threshold for sustained_frames
         consecutive = 0
@@ -420,20 +429,17 @@ class SOFAAligner:
                 consecutive = 0
 
         onset_sec = onset_frame * frame_sec
+        print(f"[SOFA Trim] onset_frame={onset_frame}, onset_sec={onset_sec:.2f}s")
 
         if onset_sec < min_intro_sec:
-            logger.info(
-                "Intro silence: %.1fs (below %.1fs threshold — no trim)",
-                onset_sec, min_intro_sec,
+            print(
+                f"[SOFA Trim] Intro {onset_sec:.1f}s < {min_intro_sec:.1f}s threshold — no trim"
             )
             return 0.0
 
-        # Keep a small preroll to avoid clipping the first syllable
+        # Keep a preroll buffer to avoid clipping the first syllable
         trim_sec = max(0.0, onset_sec - preroll_sec)
-        logger.info(
-            "Detected %.1fs intro silence, trimming to %.1fs",
-            onset_sec, trim_sec,
-        )
+        print(f"[SOFA Trim] Trimming {trim_sec:.1f}s of intro silence")
         return trim_sec
 
     # ------------------------------------------------------------------
